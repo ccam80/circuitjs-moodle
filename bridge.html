@@ -16,19 +16,27 @@
 <script>
 (function() {
   // -- Parse URL parameters ------------------------------------------------
-  var params       = new URLSearchParams(window.location.search);
-  var ctz          = params.get('ctz')            || '';
-  var cct          = params.get('cct')            || '';
-  var startCircuit = params.get('startCircuit')   || '';
-  var nodes        = (params.get('nodes')    || '').split(',').filter(Boolean);
-  var elements     = (params.get('elements') || '').split(',').filter(Boolean);
-  var rate         = parseInt(params.get('rate') || '4', 10);
+  // IMPORTANT: Do NOT use URLSearchParams — it converts '+' to space per
+  // the application/x-www-form-urlencoded spec.  Falstad's ctz values use
+  // lz-string's URI-component alphabet which includes '+' as data.
+  // We parse the raw query string with decodeURIComponent (which preserves '+').
+  function getParam(name) {
+    var match = window.location.search.match(new RegExp('[?&]' + name + '=([^&]*)'));
+    return match ? decodeURIComponent(match[1]) : '';
+  }
+
+  var ctz          = getParam('ctz');
+  var cct          = getParam('cct');
+  var startCircuit = getParam('startCircuit');
+  var nodes        = getParam('nodes').split(',').filter(Boolean);
+  var elements     = getParam('elements').split(',').filter(Boolean);
+  var rate         = parseInt(getParam('rate') || '4', 10);
 
   // Display options — all default to showing controls
-  var editable      = params.get('editable')        || 'true';
-  var white         = params.get('whiteBackground') || 'false';
-  var hideSidebar   = params.get('hideSidebar')     || 'false';
-  var hideMenu      = params.get('hideMenu')        || 'false';
+  var editable      = getParam('editable')        || 'true';
+  var white         = getParam('whiteBackground') || 'false';
+  var hideSidebar   = getParam('hideSidebar')     || 'false';
+  var hideMenu      = getParam('hideMenu')        || 'false';
 
   // -- Build simulator URL -------------------------------------------------
   var simUrl = 'circuitjs.html?running=true'
