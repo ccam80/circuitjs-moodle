@@ -44,7 +44,10 @@
     + '&editable=' + editable
     + '&hideSidebar=' + hideSidebar
     + '&hideMenu=' + hideMenu;
-  if (ctz)          simUrl += '&ctz=' + encodeURIComponent(ctz);
+  // ctz is lz-string compressToEncodedURIComponent output — its alphabet
+  // (A-Za-z0-9+-$) is already URL-safe.  Do NOT encodeURIComponent it:
+  // that converts '+' to '%2B', which GWT reads as literal '%2B' not '+'.
+  if (ctz)          simUrl += '&ctz=' + ctz;
   if (cct)          simUrl += '&cct=' + encodeURIComponent(cct);
   if (startCircuit) simUrl += '&startCircuit=' + encodeURIComponent(startCircuit);
 
