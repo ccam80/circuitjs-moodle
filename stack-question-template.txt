@@ -1,0 +1,135 @@
+===========================================================================
+STACK QUESTION TEMPLATE: CircuitJS1 Graded Simulation
+===========================================================================
+Copy these values into the corresponding fields when creating a new
+STACK question in Moodle. Replace YOUR_GITHUB_USERNAME and the ctz
+parameter with your actual values.
+
+BRIDGE_URL = https://YOUR_GITHUB_USERNAME.github.io/circuitjs-moodle/bridge.html
+
+---------------------------------------------------------------------------
+FIELD: Question name
+---------------------------------------------------------------------------
+Voltage Divider - CircuitJS1 Graded
+
+---------------------------------------------------------------------------
+FIELD: Question variables (Maxima)
+---------------------------------------------------------------------------
+/* Target voltage the student should achieve */
+target_voltage: 3.3;
+/* Acceptable tolerance in volts */
+tol: 0.1;
+
+---------------------------------------------------------------------------
+FIELD: Question text (CASText + HTML)
+---------------------------------------------------------------------------
+<p>Adjust the resistor values in the voltage divider below so that
+\(V_\text{out}\) is as close to {@target_voltage@} V as possible.
+The tolerance is \(\pm\) {@tol@} V.</p>
+
+<p><em>Right-click a resistor and choose "Edit..." to change its value.
+The readout below updates live.</em></p>
+
+[[iframe height="620px" width="820px"]]
+<div style="font-family:sans-serif;">
+
+  <!-- CircuitJS1 bridge iframe -->
+  <iframe id="sim-bridge"
+    src="BRIDGE_URL?ctz=PUT_YOUR_CTZ_HERE&nodes=vout&editable=true&rate=2"
+    width="800" height="550" style="border:1px solid #ccc;">
+  </iframe>
+
+  <!-- Live readout -->
+  <div id="readout" style="font-family:monospace; padding:8px; font-size:14px;">
+    V<sub>out</sub> = <span id="voltage-display">&mdash;</span> V
+    <span id="status" style="color:#999; margin-left:20px;">(waiting for simulation...)</span>
+  </div>
+
+</div>
+
+[[script type="module"]]
+// Import the STACK-JS bridge library
+import {stack_js} from '[[cors src="stackjsiframe.js"/]]';
+
+// Request write access to the hidden STACK input "ans1"
+const inputId = await stack_js.request_access_to_input("ans1", true);
+const stackInput = document.getElementById(inputId);
+
+// Listen for simulation data relayed by bridge.html
+window.addEventListener('message', function(event) {
+  if (!event.data || event.data.type !== 'circuitjs-data') return;
+
+  var vout = event.data.values['vout'];
+  if (vout === null || vout === undefined) return;
+
+  // Update the visual readout
+  document.getElementById('voltage-display').textContent = vout.toFixed(3);
+  document.getElementById('status').textContent = '';
+
+  // Write the value into the STACK input for Maxima to grade
+  stackInput.value = vout.toFixed(6);
+  stackInput.dispatchEvent(new Event('change'));
+});
+[[/script]]
+[[/iframe]]
+
+---------------------------------------------------------------------------
+FIELD: Input: ans1 — configuration
+---------------------------------------------------------------------------
+Input type:       Algebraic input
+Model answer:     target_voltage
+Input box size:   5
+Hide input:       YES   (the iframe writes to it programmatically)
+Forbid float:     NO
+Require min/max:  NO
+
+---------------------------------------------------------------------------
+FIELD: Potential Response Tree (PRT)
+---------------------------------------------------------------------------
+PRT name:  prt1
+Feedback variables:  (leave empty)
+
+NODE 1:
+  Student answer (SAns):  ans1
+  Teacher answer (TAns):  target_voltage
+  Answer test:            NumAbsolute
+  Test option (tolerance): tol
+  Quiet:                  Yes
+  Auto-simplify:          Yes
+
+  TRUE  branch:  Score = 1, Penalty = 0
+    Feedback:  <p>Correct. \(V_\text{out}\) = {@ans1@} V is within
+               {@tol@} V of the target {@target_voltage@} V.</p>
+
+  FALSE branch:  Score = 0, Penalty = 0
+    Feedback:  <p>Not quite. Your circuit gives \(V_\text{out}\) =
+               {@ans1@} V, but the target is {@target_voltage@} V
+               (&plusmn; {@tol@} V).</p>
+
+---------------------------------------------------------------------------
+NOTES
+---------------------------------------------------------------------------
+1. Replace BRIDGE_URL with your actual GitHub Pages URL.
+
+2. Replace PUT_YOUR_CTZ_HERE with the ctz value from your circuit.
+   To get this:
+   a) Open https://falstad.com/circuit/circuitjs.html
+   b) Build your voltage divider circuit
+   c) Label the output node "vout" (right-click wire -> Edit -> label)
+   d) File -> Export As Link
+   e) Copy just the ctz=... parameter value from the generated URL
+
+3. The "Hide input" setting prevents students from seeing/editing the
+   hidden ans1 field that receives the voltage value.
+
+4. You can add more nodes by extending both:
+   - The bridge URL:  &nodes=vout,vmid,vin
+   - The message listener in the [[script]] block
+
+5. For multi-value grading (e.g. check both voltage AND current),
+   add more STACK inputs (ans2, ans3) and more PRT nodes, each
+   reading a different value from event.data.values.
+
+6. To prevent students from just typing a value into the hidden input,
+   consider also checking that the circuit has been modified — e.g.
+   by reading a second node voltage as a cross-check.

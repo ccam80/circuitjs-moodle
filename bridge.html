@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>CircuitJS1 Bridge</title>
+  <style>
+    * { margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    #sim-frame { width: 100%; height: 100%; border: none; }
+  </style>
+</head>
+<body>
+
+<iframe id="sim-frame"></iframe>
+
+<script>
+(function() {
+  // -- Parse URL parameters ------------------------------------------------
+  var params    = new URLSearchParams(window.location.search);
+  var ctz       = params.get('ctz')       || '';
+  var cct       = params.get('cct')       || '';
+  var nodes     = (params.get('nodes')    || '').split(',').filter(Boolean);
+  var elements  = (params.get('elements') || '').split(',').filter(Boolean);
+  var rate      = parseInt(params.get('rate') || '4', 10);
+  var editable  = params.get('editable')  || 'true';
+  var white     = params.get('whiteBackground') || 'true';
+
+  // -- Build simulator URL -------------------------------------------------
+  var simUrl = 'circuitjs.html?hideSidebar=true&hideMenu=true'
+    + '&whiteBackground=' + white
+    + '&running=true'
+    + '&editable=' + editable;
+  if (ctz) simUrl += '&ctz=' + encodeURIComponent(ctz);
+  if (cct) simUrl += '&cct=' + encodeURIComponent(cct);
+
+  var frame = document.getElementById('sim-frame');
+  frame.src = simUrl;
+
+  // -- Wait for simulator, then start reading values -----------------------
+  var sim = null;
+  var updateCount = 0;
+  var skipEvery = Math.max(1, Math.round(60 / rate));
+
+  frame.contentWindow.oncircuitjsloaded = function() {
+    sim = frame.contentWindow.CircuitJS1;
+
+    sim.onupdate = function() {
+      // Throttle: ~60 display updates/sec -> rate posts/sec
+      updateCount++;
+      if (updateCount % skipEvery !== 0) return;
+
+      var data = { type: 'circuitjs-data', values: {} };
+
+      // Read labeled node voltages
+      for (var i = 0; i < nodes.length; i++) {
+        try {
+          data.values[nodes[i]] = sim.getNodeVoltage(nodes[i]);
+        } catch(e) {
+          data.values[nodes[i]] = null;
+        }
+      }
+
+      // Read element properties by index  (e.g. "3:current", "5:voltageDiff")
+      if (elements.length > 0) {
+        var allElems = sim.getElements();
+        for (var j = 0; j < elements.length; j++) {
+          var parts = elements[j].split(':');
+          var idx   = parseInt(parts[0], 10);
+          var prop  = parts[1] || 'current';
+          if (idx < allElems.length) {
+            try {
+              if (prop === 'current')     data.values[elements[j]] = allElems[idx].getCurrent();
+              if (prop === 'voltageDiff') data.values[elements[j]] = allElems[idx].getVoltageDiff();
+              if (prop === 'voltage')     data.values[elements[j]] = allElems[idx].getVoltageDiff();
+            } catch(e) {
+              data.values[elements[j]] = null;
+            }
+          }
+        }
+      }
+
+      // Relay to parent (STACK-JS iframe)
+      window.parent.postMessage(data, '*');
+    };
+
+    // Also fire on circuit load/edit so parent knows what nodes exist
+    sim.onanalyze = function() {
+      var elems = sim.getElements();
+      var info = [];
+      for (var k = 0; k < elems.length; k++) {
+        var e = elems[k];
+        info.push({ index: k, type: e.getType(), label: e.getLabelName ? e.getLabelName() : '' });
+      }
+      window.parent.postMessage({ type: 'circuitjs-elements', elements: info }, '*');
+    };
+  };
+})();
+</script>
+</body>
+</html>
