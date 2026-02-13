@@ -5,7 +5,7 @@ Copy these values into the corresponding fields when creating a new
 STACK question in Moodle. Replace YOUR_GITHUB_USERNAME and the ctz
 parameter with your actual values.
 
-BRIDGE_URL = https://YOUR_GITHUB_USERNAME.github.io/circuitjs-moodle/bridge.html
+BRIDGE_URL = https://ccam80.github.io/circuitjs-moodle/bridge.html
 
 ---------------------------------------------------------------------------
 FIELD: Question name
@@ -35,7 +35,7 @@ The readout below updates live.</em></p>
 
   <!-- CircuitJS1 bridge iframe -->
   <iframe id="sim-bridge"
-    src="BRIDGE_URL?ctz=PUT_YOUR_CTZ_HERE&nodes=vout&editable=true&rate=2"
+    src="https://ccam80.github.io/circuitjs-moodle/bridge.html?ctz=PUT_YOUR_CTZ_HERE&nodes=vout&editable=true&rate=2"
     width="800" height="550" style="border:1px solid #ccc;">
   </iframe>
 
