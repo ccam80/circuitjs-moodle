@@ -138,6 +138,10 @@
     setTimeout(tryConnect, 300);
   }
 
+  // Debug: log to console so we can verify the URL is correct
+  console.log('[bridge] ctz extracted:', ctz ? ctz.length + ' chars, has +: ' + ctz.includes('+') : 'EMPTY');
+  console.log('[bridge] simUrl:', simUrl);
+
   // Start loading the simulator
   frame.src = simUrl;
 
