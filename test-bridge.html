@@ -19,18 +19,12 @@
 
 <h3>CircuitJS1 Bridge Test</h3>
 <p class="note">
-  Uses the bundled "jsinterface" demo circuit (has labeled nodes: vsense, D0-D7).
-  If live voltage values appear below, the bridge is working correctly.
+  User circuit loaded via ctz parameter. The element listing shows all
+  circuit components on load. Labeled nodes (if any) stream live values.
 </p>
 
-<!--
-  startCircuit=jsinterface.txt  — load the bundled JS interface demo circuit
-  nodes=vsense                  — read the "vsense" labeled node
-  rate=4                        — post data ~4 times/sec
-  Controls are visible (defaults: hideSidebar=false, hideMenu=false)
--->
 <iframe id="bridge-frame"
-  src="bridge.html?startCircuit=jsinterface.txt&nodes=vsense&rate=4&editable=true"
+  src="bridge.html?ctz=CQAgjCAMB0l3BWEA2aAWB8CcBmSy0AOBBAdkJE0sskoFMBaMMAKAGMQAmNWsZWnr34g0UWPAidomSFgSccpTmBwICyMXAiQWAJxFxwwwV0IVaqlgHkDQ2gjCcjtFywDmt0xRM5OLqCxgpLTcdlyQFHwW4eDw1DCsfqSeUSJ84JzeIABmAJYANgAuLElcSs5lTo5ZAIIAwiwA9iJGUAZYFEgw8LKkyGqcXVwtOCC5AHZNw%2BkCshRSXeJwWH0DSBAQjQCuxQAWIKPaLEA&nodes=vout&rate=4&editable=true"
   width="800" height="550">
 </iframe>
 
