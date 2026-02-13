@@ -5,20 +5,32 @@
   <title>Bridge Test Page</title>
   <style>
     body { font-family: sans-serif; margin: 20px; }
-    #readout { font-family: monospace; background: #f4f4f4; padding: 12px; margin-top: 10px; white-space: pre-wrap; min-height: 60px; border: 1px solid #ccc; }
-    iframe { border: 1px solid #999; }
+    #readout {
+      font-family: monospace; background: #f4f4f4; padding: 12px;
+      margin-top: 10px; white-space: pre-wrap; min-height: 80px;
+      border: 1px solid #ccc; font-size: 13px;
+    }
+    iframe { border: 1px solid #999; display: block; }
     h3 { margin-top: 0; }
+    .note { color: #666; font-size: 13px; margin-bottom: 10px; }
   </style>
 </head>
 <body>
 
 <h3>CircuitJS1 Bridge Test</h3>
-<p>This page embeds bridge.html and displays the postMessage data it sends.
-If you see voltage values updating below, the bridge is working.</p>
+<p class="note">
+  Uses the bundled "jsinterface" demo circuit (has labeled nodes: vsense, D0-D7).
+  If live voltage values appear below, the bridge is working correctly.
+</p>
 
-<!-- Simple voltage divider circuit with labeled output node "vout" -->
+<!--
+  startCircuit=jsinterface.txt  — load the bundled JS interface demo circuit
+  nodes=vsense                  — read the "vsense" labeled node
+  rate=4                        — post data ~4 times/sec
+  Controls are visible (defaults: hideSidebar=false, hideMenu=false)
+-->
 <iframe id="bridge-frame"
-  src="bridge.html?ctz=CQAgjCAMB0l3BWcMBMcUHYMGZIA4UA2ATmIxAUgoqoQFMBaMMAKADcQUUAWKvbqHirceYAAoATgEsAdgBcAzqLZUAJjMGi6y1RzGqI4bHgj6Qo1AGDhJMQCMZ12TJCUAHjMIB3e84BmMPbuAPIQCGau4AhB4W5unt6+-szCsZAAZi4AhgA2ABYZGRkA7mmFmToARn65AIYlmSZ5+YUAthl1zQDmJQVtAK5dGX1tjUA&nodes=vout&rate=4&editable=true"
+  src="bridge.html?startCircuit=jsinterface.txt&nodes=vsense&rate=4&editable=true"
   width="800" height="550">
 </iframe>
 
@@ -26,25 +38,25 @@ If you see voltage values updating below, the bridge is working.</p>
 
 <script>
 var readout = document.getElementById('readout');
-var lastData = null;
+var messageCount = 0;
 
 window.addEventListener('message', function(event) {
   if (!event.data) return;
 
   if (event.data.type === 'circuitjs-data') {
-    lastData = event.data;
-    var lines = ['=== circuitjs-data (live) ==='];
+    messageCount++;
+    var lines = ['=== circuitjs-data (message #' + messageCount + ') ==='];
     for (var key in event.data.values) {
       var val = event.data.values[key];
-      lines.push('  ' + key + ' = ' + (val !== null ? val.toFixed(6) : 'null'));
+      lines.push('  ' + key + ' = ' + (val !== null ? val.toFixed(6) : 'null') + ' V');
     }
     readout.textContent = lines.join('\n');
   }
 
   if (event.data.type === 'circuitjs-elements') {
-    var lines = ['=== circuitjs-elements (on circuit load) ==='];
+    var lines = ['=== circuitjs-elements (circuit loaded) ==='];
     event.data.elements.forEach(function(e) {
-      lines.push('  [' + e.index + '] ' + e.type + (e.label ? ' "' + e.label + '"' : ''));
+      lines.push('  [' + e.index + '] ' + e.type + (e.label ? '  label="' + e.label + '"' : ''));
     });
     readout.textContent = lines.join('\n') + '\n\n' + readout.textContent;
   }

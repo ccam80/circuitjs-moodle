@@ -16,36 +16,46 @@
 <script>
 (function() {
   // -- Parse URL parameters ------------------------------------------------
-  var params    = new URLSearchParams(window.location.search);
-  var ctz       = params.get('ctz')       || '';
-  var cct       = params.get('cct')       || '';
-  var nodes     = (params.get('nodes')    || '').split(',').filter(Boolean);
-  var elements  = (params.get('elements') || '').split(',').filter(Boolean);
-  var rate      = parseInt(params.get('rate') || '4', 10);
-  var editable  = params.get('editable')  || 'true';
-  var white     = params.get('whiteBackground') || 'true';
+  var params       = new URLSearchParams(window.location.search);
+  var ctz          = params.get('ctz')            || '';
+  var cct          = params.get('cct')            || '';
+  var startCircuit = params.get('startCircuit')   || '';
+  var nodes        = (params.get('nodes')    || '').split(',').filter(Boolean);
+  var elements     = (params.get('elements') || '').split(',').filter(Boolean);
+  var rate         = parseInt(params.get('rate') || '4', 10);
+
+  // Display options — all default to showing controls
+  var editable      = params.get('editable')        || 'true';
+  var white         = params.get('whiteBackground') || 'false';
+  var hideSidebar   = params.get('hideSidebar')     || 'false';
+  var hideMenu      = params.get('hideMenu')        || 'false';
 
   // -- Build simulator URL -------------------------------------------------
-  var simUrl = 'circuitjs.html?hideSidebar=true&hideMenu=true'
+  var simUrl = 'circuitjs.html?running=true'
     + '&whiteBackground=' + white
-    + '&running=true'
-    + '&editable=' + editable;
-  if (ctz) simUrl += '&ctz=' + encodeURIComponent(ctz);
-  if (cct) simUrl += '&cct=' + encodeURIComponent(cct);
+    + '&editable=' + editable
+    + '&hideSidebar=' + hideSidebar
+    + '&hideMenu=' + hideMenu;
+  if (ctz)          simUrl += '&ctz=' + encodeURIComponent(ctz);
+  if (cct)          simUrl += '&cct=' + encodeURIComponent(cct);
+  if (startCircuit) simUrl += '&startCircuit=' + encodeURIComponent(startCircuit);
 
   var frame = document.getElementById('sim-frame');
-  frame.src = simUrl;
 
-  // -- Wait for simulator, then start reading values -----------------------
+  // -- Robust connection to CircuitJS1 -------------------------------------
+  // The oncircuitjsloaded callback can be lost if set before the iframe
+  // navigates. We poll + re-set the callback to handle all timing cases.
   var sim = null;
+  var connected = false;
   var updateCount = 0;
   var skipEvery = Math.max(1, Math.round(60 / rate));
 
-  frame.contentWindow.oncircuitjsloaded = function() {
-    sim = frame.contentWindow.CircuitJS1;
+  function initSim(circuitJS1) {
+    if (connected) return;  // only init once
+    connected = true;
+    sim = circuitJS1;
 
     sim.onupdate = function() {
-      // Throttle: ~60 display updates/sec -> rate posts/sec
       updateCount++;
       if (updateCount % skipEvery !== 0) return;
 
@@ -60,7 +70,7 @@
         }
       }
 
-      // Read element properties by index  (e.g. "3:current", "5:voltageDiff")
+      // Read element properties by index (e.g. "3:current", "5:voltageDiff")
       if (elements.length > 0) {
         var allElems = sim.getElements();
         for (var j = 0; j < elements.length; j++) {
@@ -79,11 +89,9 @@
         }
       }
 
-      // Relay to parent (STACK-JS iframe)
       window.parent.postMessage(data, '*');
     };
 
-    // Also fire on circuit load/edit so parent knows what nodes exist
     sim.onanalyze = function() {
       var elems = sim.getElements();
       var info = [];
@@ -93,7 +101,37 @@
       }
       window.parent.postMessage({ type: 'circuitjs-elements', elements: info }, '*');
     };
-  };
+  }
+
+  function tryConnect() {
+    if (connected) return;
+    try {
+      var win = frame.contentWindow;
+      if (!win) { setTimeout(tryConnect, 300); return; }
+
+      // If GWT already finished loading, connect immediately
+      if (win.CircuitJS1) {
+        initSim(win.CircuitJS1);
+        return;
+      }
+
+      // Otherwise set/reset the callback (it may have been lost during nav)
+      win.oncircuitjsloaded = function() {
+        initSim(win.CircuitJS1);
+      };
+    } catch(e) {
+      // contentWindow not ready yet — retry
+    }
+
+    // Keep polling until connected (handles all timing edge cases)
+    setTimeout(tryConnect, 300);
+  }
+
+  // Start loading the simulator
+  frame.src = simUrl;
+
+  // Begin polling for the CircuitJS1 object after a short delay
+  setTimeout(tryConnect, 500);
 })();
 </script>
 </body>
