@@ -67,50 +67,58 @@
     sim = circuitJS1;
 
     sim.onupdate = function() {
-      updateCount++;
-      if (updateCount % skipEvery !== 0) return;
+      try {
+        updateCount++;
+        if (updateCount % skipEvery !== 0) return;
 
-      var data = { type: 'circuitjs-data', values: {} };
+        var data = { type: 'circuitjs-data', values: {} };
 
-      // Read labeled node voltages
-      for (var i = 0; i < nodes.length; i++) {
-        try {
-          data.values[nodes[i]] = sim.getNodeVoltage(nodes[i]);
-        } catch(e) {
-          data.values[nodes[i]] = null;
+        // Read labeled node voltages
+        for (var i = 0; i < nodes.length; i++) {
+          try {
+            data.values[nodes[i]] = sim.getNodeVoltage(nodes[i]);
+          } catch(e) {
+            data.values[nodes[i]] = null;
+          }
         }
-      }
 
-      // Read element properties by index (e.g. "3:current", "5:voltageDiff")
-      if (elements.length > 0) {
-        var allElems = sim.getElements();
-        for (var j = 0; j < elements.length; j++) {
-          var parts = elements[j].split(':');
-          var idx   = parseInt(parts[0], 10);
-          var prop  = parts[1] || 'current';
-          if (idx < allElems.length) {
-            try {
-              if (prop === 'current')     data.values[elements[j]] = allElems[idx].getCurrent();
-              if (prop === 'voltageDiff') data.values[elements[j]] = allElems[idx].getVoltageDiff();
-              if (prop === 'voltage')     data.values[elements[j]] = allElems[idx].getVoltageDiff();
-            } catch(e) {
-              data.values[elements[j]] = null;
+        // Read element properties by index (e.g. "3:current", "5:voltageDiff")
+        if (elements.length > 0) {
+          var allElems = sim.getElements();
+          for (var j = 0; j < elements.length; j++) {
+            var parts = elements[j].split(':');
+            var idx   = parseInt(parts[0], 10);
+            var prop  = parts[1] || 'current';
+            if (idx < allElems.length) {
+              try {
+                if (prop === 'current')     data.values[elements[j]] = allElems[idx].getCurrent();
+                if (prop === 'voltageDiff') data.values[elements[j]] = allElems[idx].getVoltageDiff();
+                if (prop === 'voltage')     data.values[elements[j]] = allElems[idx].getVoltageDiff();
+              } catch(e) {
+                data.values[elements[j]] = null;
+              }
             }
           }
         }
-      }
 
-      window.parent.postMessage(data, '*');
+        window.parent.postMessage(data, '*');
+      } catch(e) {
+        // Swallow — never let exceptions propagate into GWT's simulation loop
+      }
     };
 
     sim.onanalyze = function() {
-      var elems = sim.getElements();
-      var info = [];
-      for (var k = 0; k < elems.length; k++) {
-        var e = elems[k];
-        info.push({ index: k, type: e.getType(), label: e.getLabelName ? e.getLabelName() : '' });
+      try {
+        var elems = sim.getElements();
+        var info = [];
+        for (var k = 0; k < elems.length; k++) {
+          var e = elems[k];
+          info.push({ index: k, type: e.getType(), label: e.getLabelName ? e.getLabelName() : '' });
+        }
+        window.parent.postMessage({ type: 'circuitjs-elements', elements: info }, '*');
+      } catch(e) {
+        // Swallow — circuit may be in transient state during re-analysis
       }
-      window.parent.postMessage({ type: 'circuitjs-elements', elements: info }, '*');
     };
   }
 
