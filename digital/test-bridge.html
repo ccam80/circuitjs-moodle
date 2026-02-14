@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Digital Bridge Test Page</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 20px; background: #fafafa; }
+    h2 { margin-top: 0; }
+    .section { background: #fff; border: 1px solid #ddd; border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+    .section h3 { margin: 0 0 8px 0; font-size: 15px; color: #333; }
+    .note { color: #666; font-size: 13px; margin-bottom: 12px; }
+    iframe { border: 1px solid #999; display: block; background: #fff; }
+    #log {
+      font-family: 'SF Mono', 'Consolas', 'Courier New', monospace;
+      background: #1e1e1e; color: #d4d4d4; padding: 12px;
+      white-space: pre-wrap; min-height: 120px; max-height: 400px;
+      overflow-y: auto; border-radius: 4px; font-size: 12px;
+      line-height: 1.5;
+    }
+    .log-info { color: #9cdcfe; }
+    .log-data { color: #4ec9b0; }
+    .log-error { color: #f48771; }
+    .log-test-pass { color: #89d185; }
+    .log-test-fail { color: #f48771; }
+    button {
+      padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px;
+      background: #fff; cursor: pointer; font-size: 13px; margin-right: 8px;
+    }
+    button:hover { background: #f0f0f0; }
+    .controls { margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+    select, input[type="text"] {
+      padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px;
+      font-size: 13px;
+    }
+    label { font-size: 13px; color: #555; }
+    .tab-bar { display: flex; border-bottom: 2px solid #ddd; margin-bottom: 16px; }
+    .tab {
+      padding: 8px 20px; cursor: pointer; border-bottom: 2px solid transparent;
+      margin-bottom: -2px; font-size: 14px; color: #666;
+    }
+    .tab.active { border-bottom-color: #4285f4; color: #4285f4; font-weight: 600; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+  </style>
+</head>
+<body>
+
+<h2>Digital Bridge Test Harness</h2>
+<p class="note">
+  Test page for the Digital ↔ Moodle postMessage bridge. Switches between
+  GUI mode (full Swing editor) and headless mode (simulation-only grading).
+  Requires <code>Digital.jar</code> to be present in this directory.
+</p>
+
+<!-- Tab bar -->
+<div class="tab-bar">
+  <div class="tab active" data-tab="gui">GUI Mode</div>
+  <div class="tab" data-tab="headless">Headless Mode</div>
+</div>
+
+<!-- GUI Mode Panel -->
+<div id="tab-gui" class="tab-panel active">
+  <div class="section">
+    <h3>GUI Mode — Full Swing Editor</h3>
+    <p class="note">
+      Loads Digital.jar as a full Swing application via CheerpJ.
+      Click "Grade Circuit" to send a grading request via postMessage.
+    </p>
+    <div class="controls">
+      <button id="btn-launch-gui">Launch Digital (GUI)</button>
+      <button id="btn-grade" disabled>Grade Circuit</button>
+    </div>
+    <iframe id="gui-frame" width="900" height="600" style="display:none;"></iframe>
+  </div>
+</div>
+
+<!-- Headless Mode Panel -->
+<div id="tab-headless" class="tab-panel">
+  <div class="section">
+    <h3>Headless Mode — Simulation + Test Grading</h3>
+    <p class="note">
+      Loads a .dig circuit without GUI. Reads outputs and/or runs embedded tests.
+      Results appear in the log below.
+    </p>
+    <div class="controls">
+      <label>Circuit:
+        <select id="dig-url-select">
+          <option value="circuits/and-gate.dig">AND Gate (circuits/and-gate.dig)</option>
+          <option value="circuits/half-adder.dig">Half Adder (circuits/half-adder.dig)</option>
+          <option value="">Custom URL...</option>
+        </select>
+      </label>
+      <label>
+        <input type="text" id="dig-url" size="40"
+          placeholder="Custom .dig URL" value="circuits/and-gate.dig" style="display:none;">
+      </label>
+    </div>
+    <div class="controls">
+      <label>Outputs to read:
+        <input type="text" id="outputs" size="20" placeholder="e.g. Y,S,Cout" value="Y">
+      </label>
+      <label>Inputs:
+        <input type="text" id="inputs" size="20" placeholder="e.g. A,B" value="A,B">
+      </label>
+      <label>Input values:
+        <input type="text" id="input-vals" size="20" placeholder="e.g. 1,0" value="1,0">
+      </label>
+    </div>
+    <div class="controls">
+      <label><input type="checkbox" id="run-tests" checked> Run embedded tests</label>
+      <button id="btn-run-headless">Run Headless</button>
+    </div>
+    <iframe id="headless-frame" width="0" height="0" style="display:none;"></iframe>
+  </div>
+</div>
+
+<!-- Log output -->
+<div class="section">
+  <h3>Message Log</h3>
+  <button id="btn-clear-log" style="float:right; margin-top:-4px;">Clear</button>
+  <div id="log"></div>
+</div>
+
+<script>
+(function() {
+  var logEl = document.getElementById('log');
+  var messageCount = 0;
+
+  function log(text, cls) {
+    var line = document.createElement('div');
+    line.className = cls || '';
+    line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + text;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  // -- Tab switching ----------------------------------------------------------
+  document.querySelectorAll('.tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+      tab.classList.add('active');
+      document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  // -- GUI Mode ---------------------------------------------------------------
+  var guiFrame = document.getElementById('gui-frame');
+  var btnGrade = document.getElementById('btn-grade');
+
+  document.getElementById('btn-launch-gui').addEventListener('click', function() {
+    guiFrame.style.display = 'block';
+    guiFrame.src = 'bridge.html?mode=gui';
+    log('Launching GUI mode...', 'log-info');
+    this.disabled = true;
+    btnGrade.disabled = false;
+  });
+
+  btnGrade.addEventListener('click', function() {
+    log('Sending grade request to bridge...', 'log-info');
+    guiFrame.contentWindow.postMessage({ type: 'digital-grade' }, '*');
+  });
+
+  // -- Headless Mode ----------------------------------------------------------
+  var headlessFrame = document.getElementById('headless-frame');
+  var digUrlSelect = document.getElementById('dig-url-select');
+  var digUrlInput = document.getElementById('dig-url');
+
+  digUrlSelect.addEventListener('change', function() {
+    if (digUrlSelect.value) {
+      digUrlInput.style.display = 'none';
+      digUrlInput.value = digUrlSelect.value;
+    } else {
+      digUrlInput.style.display = '';
+      digUrlInput.value = '';
+      digUrlInput.focus();
+    }
+  });
+  // Initialize
+  digUrlInput.value = digUrlSelect.value;
+
+  document.getElementById('btn-run-headless').addEventListener('click', function() {
+    var digUrlVal   = digUrlInput.value.trim();
+    var outputsVal  = document.getElementById('outputs').value.trim();
+    var inputsVal   = document.getElementById('inputs').value.trim();
+    var inputValsVal = document.getElementById('input-vals').value.trim();
+    var runTestsVal = document.getElementById('run-tests').checked;
+
+    var url = 'bridge.html?mode=headless';
+    if (digUrlVal) url += '&dig=' + encodeURIComponent(digUrlVal);
+    if (outputsVal) url += '&outputs=' + encodeURIComponent(outputsVal);
+    if (inputsVal) url += '&inputs=' + encodeURIComponent(inputsVal);
+    if (inputValsVal) url += '&inputVals=' + encodeURIComponent(inputValsVal);
+    if (runTestsVal) url += '&runTests=true';
+
+    log('Launching headless: ' + url, 'log-info');
+    headlessFrame.src = url;
+  });
+
+  // -- Listen for postMessage from bridge frames ------------------------------
+  window.addEventListener('message', function(event) {
+    if (!event.data || !event.data.type) return;
+    if (!event.data.type.startsWith('digital-')) return;
+
+    messageCount++;
+    var d = event.data;
+
+    switch (d.type) {
+      case 'digital-ready':
+        log('#' + messageCount + ' READY — bridge initialized', 'log-info');
+        break;
+
+      case 'digital-data':
+        var lines = ['#' + messageCount + ' OUTPUT VALUES:'];
+        for (var name in d.values) {
+          var v = d.values[name];
+          if (v === null) {
+            lines.push('  ' + name + ' = null (not found)');
+          } else {
+            lines.push('  ' + name + ' = ' + v.display +
+              ' (value=' + v.value + ', bool=' + v.bool +
+              ', highZ=' + v.highZ + ', bits=' + v.bits + ')');
+          }
+        }
+        log(lines.join('\n'), 'log-data');
+        break;
+
+      case 'digital-test-results':
+        var allPassed = d.allPassed;
+        log('#' + messageCount + ' TEST RESULTS (' + d.testCount + ' test(s), ' +
+          (allPassed ? 'ALL PASSED' : 'SOME FAILED') + '):',
+          allPassed ? 'log-test-pass' : 'log-test-fail');
+        d.tests.forEach(function(t) {
+          var status = t.passed ? 'PASS' : 'FAIL';
+          var extra = t.error ? ' error: ' + t.error : '';
+          if (!t.passed && t.failedPercent !== undefined) {
+            extra += ' (' + t.failedPercent.toFixed(1) + '% failed)';
+          }
+          log('  Test #' + t.index + ': ' + status + extra,
+            t.passed ? 'log-test-pass' : 'log-test-fail');
+        });
+        break;
+
+      case 'digital-error':
+        log('#' + messageCount + ' ERROR: ' + d.error, 'log-error');
+        break;
+
+      default:
+        log('#' + messageCount + ' Unknown message type: ' + d.type, 'log-info');
+    }
+  });
+
+  // -- Clear log --------------------------------------------------------------
+  document.getElementById('btn-clear-log').addEventListener('click', function() {
+    logEl.innerHTML = '';
+    messageCount = 0;
+    log('Log cleared', 'log-info');
+  });
+
+  log('Test harness loaded. Choose a mode and run.', 'log-info');
+})();
+</script>
+
+</body>
+</html>

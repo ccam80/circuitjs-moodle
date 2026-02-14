@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Digital Logic Simulator</title>
+  <script src="https://cjrtnc.leaningtech.com/4.2/loader.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+    #container { width: 100vw; height: 100svh; }
+
+    /* Loading overlay — hidden once CheerpJ takes over rendering */
+    #loading-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: #f5f5f5; z-index: 9999;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      font-family: system-ui, sans-serif; color: #333;
+    }
+    #loading-overlay.hidden { display: none; }
+    .spinner {
+      width: 40px; height: 40px; border: 4px solid #ddd;
+      border-top-color: #4285f4; border-radius: 50%;
+      animation: spin 0.8s linear infinite; margin-bottom: 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #load-status { font-size: 14px; color: #666; margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div><strong>Loading Digital Logic Simulator...</strong></div>
+  <div id="load-status">Initializing CheerpJ runtime</div>
+</div>
+
+<div id="container"></div>
+
+<script type="module">
+  // ---------------------------------------------------------------------------
+  // digital.html — CheerpJ Swing loader for hneemann/Digital
+  //
+  // Runs Digital.jar as a full Swing application in the browser.
+  // URL parameters:
+  //   dig=<url>      — Fetch a .dig circuit file from this URL and open it
+  //   digData=<b64>  — Base64-encoded .dig file content (for inline circuits)
+  //
+  // The /app/ prefix in CheerpJ maps to the web server document root.
+  // Digital.jar must be served from the same directory as this HTML file.
+  // ---------------------------------------------------------------------------
+
+  const params = new URLSearchParams(window.location.search);
+  const digUrl  = params.get('dig');
+  const digData = params.get('digData');
+
+  const statusEl = document.getElementById('load-status');
+  function setStatus(msg) {
+    statusEl.textContent = msg;
+    console.log('[digital]', msg);
+  }
+
+  // Compute the CheerpJ /app/ path to Digital.jar based on this page's URL
+  const basePath = window.location.pathname.substring(
+    0, window.location.pathname.lastIndexOf('/')
+  );
+  const jarPath = '/app' + basePath + '/Digital.jar';
+
+  try {
+    setStatus('Initializing CheerpJ runtime (first load downloads ~10 MB)...');
+    await cheerpjInit({
+      clipboardMode: "system",
+      status: "none",              // we show our own loading overlay
+      overrideShortcuts: (e) => {
+        // Prevent browser from intercepting Ctrl+S, Ctrl+Z etc.
+        if (e.ctrlKey && (e.key === 's' || e.key === 'z' || e.key === 'y')) return true;
+        if (e.ctrlKey && e.key === 'a') return true;
+        return false;
+      }
+    });
+
+    setStatus('Creating display...');
+    cheerpjCreateDisplay(-1, -1, document.getElementById("container"));
+
+    // If a .dig circuit was provided, inject it into CheerpJ's virtual filesystem
+    let circuitArg = null;
+    if (digUrl) {
+      setStatus('Fetching circuit file: ' + digUrl);
+      try {
+        const response = await fetch(digUrl);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const data = new Uint8Array(await response.arrayBuffer());
+        cheerpOSAddStringFile("/str/circuit.dig", data);
+        circuitArg = "/str/circuit.dig";
+        setStatus('Circuit loaded (' + data.length + ' bytes)');
+      } catch (e) {
+        console.error('[digital] Failed to fetch .dig file:', e);
+        setStatus('Warning: could not load circuit file, opening empty');
+      }
+    } else if (digData) {
+      setStatus('Decoding inline circuit data...');
+      try {
+        const binaryString = atob(digData);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        cheerpOSAddStringFile("/str/circuit.dig", bytes);
+        circuitArg = "/str/circuit.dig";
+        setStatus('Circuit decoded (' + bytes.length + ' bytes)');
+      } catch (e) {
+        console.error('[digital] Failed to decode digData:', e);
+        setStatus('Warning: could not decode circuit data, opening empty');
+      }
+    }
+
+    // Hide the loading overlay — CheerpJ's Swing rendering takes over
+    setStatus('Starting Digital...');
+    document.getElementById('loading-overlay').classList.add('hidden');
+
+    // Run Digital.jar as a Swing application
+    // If we have a circuit file, pass it as argument so Digital opens it on startup
+    if (circuitArg) {
+      await cheerpjRunJar(jarPath, circuitArg);
+    } else {
+      await cheerpjRunJar(jarPath);
+    }
+
+  } catch (e) {
+    console.error('[digital] Fatal error:', e);
+    setStatus('Error: ' + e.message);
+  }
+</script>
+</body>
+</html>

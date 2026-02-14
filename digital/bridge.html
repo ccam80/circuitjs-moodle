@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Digital Simulator Bridge</title>
+  <script src="https://cjrtnc.leaningtech.com/4.2/loader.js"></script>
+  <style>
+    * { margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    #sim-container { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+
+<div id="sim-container"></div>
+
+<script type="module">
+// ---------------------------------------------------------------------------
+// bridge.html — Digital (hneemann) ↔ Moodle/STACK postMessage bridge
+//
+// This bridge has TWO modes, selected by the "mode" URL parameter:
+//
+//   mode=gui (default)
+//     Runs Digital.jar as a full Swing app inside CheerpJ.
+//     The student sees and interacts with the circuit editor.
+//     Grading data is extracted by running a SEPARATE headless library-mode
+//     instance that loads the same circuit and runs its embedded test cases.
+//
+//     NOTE: In gui mode, live value streaming is NOT yet implemented.
+//     The Swing app runs opaquely — CheerpJ does not expose the running
+//     Model to JavaScript. For grading, the bridge currently relies on
+//     "snapshot grading": when the parent sends a 'digital-grade' message,
+//     the bridge re-loads the circuit headlessly and runs its tests.
+//
+//   mode=headless
+//     No GUI. Uses CheerpJ library mode to load the circuit, build the
+//     simulation model, optionally set inputs, step the simulation, read
+//     outputs, and run embedded test cases. Results sent via postMessage.
+//
+// URL parameters (both modes):
+//   dig=<url>         — URL to a .dig circuit file
+//   digData=<base64>  — Base64-encoded .dig file content
+//   mode=gui|headless — Operating mode (default: gui)
+//
+// Additional parameters for headless mode:
+//   outputs=A,B,Y     — Comma-separated output/probe names to read
+//   inputs=A,B        — Comma-separated input names to set
+//   inputVals=1,0     — Comma-separated values for the inputs above
+//   runTests=true      — Run all embedded test cases and report results
+//
+// Additional parameters for gui mode:
+//   editable=true      — Whether the student can modify the circuit (future)
+//
+// postMessage protocol (parent ← bridge):
+//   { type: 'digital-ready' }                — Bridge initialized
+//   { type: 'digital-data', values: {...} }  — Output signal values (headless)
+//   { type: 'digital-test-results', tests: [...], allPassed: bool }
+//   { type: 'digital-error', error: string } — Error occurred
+//
+// postMessage protocol (parent → bridge):
+//   { type: 'digital-grade' }               — Request a headless grade pass
+//   { type: 'digital-load', digData: b64 }  — Load new circuit data
+// ---------------------------------------------------------------------------
+
+function getParam(name) {
+  var match = window.location.search.match(new RegExp('[?&]' + name + '=([^&]*)'));
+  return match ? decodeURIComponent(match[1]) : '';
+}
+
+const mode      = getParam('mode') || 'gui';
+const digUrl    = getParam('dig');
+const digData   = getParam('digData');
+const outputs   = getParam('outputs').split(',').filter(Boolean);
+const inputs    = getParam('inputs').split(',').filter(Boolean);
+const inputVals = getParam('inputVals').split(',').filter(Boolean);
+const runTests  = getParam('runTests') === 'true';
+
+const basePath  = window.location.pathname.substring(
+  0, window.location.pathname.lastIndexOf('/')
+);
+const jarPath   = '/app' + basePath + '/Digital.jar';
+
+function sendToParent(data) {
+  try { window.parent.postMessage(data, '*'); } catch(e) { /* cross-origin */ }
+}
+
+// ---------------------------------------------------------------------------
+// Fetch or decode the .dig circuit file
+// ---------------------------------------------------------------------------
+async function getCircuitBytes() {
+  if (digUrl) {
+    const response = await fetch(digUrl);
+    if (!response.ok) throw new Error('Failed to fetch .dig file: HTTP ' + response.status);
+    return new Uint8Array(await response.arrayBuffer());
+  }
+  if (digData) {
+    const bin = atob(digData);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Headless mode: library-mode simulation + test execution
+// ---------------------------------------------------------------------------
+async function runHeadless(lib, circuitBytes) {
+  console.log('[bridge] Headless mode: loading circuit...');
+
+  // Inject the .dig file
+  cheerpOSAddStringFile("/str/circuit.dig", circuitBytes);
+
+  // Load the circuit using Digital's API
+  const File           = await lib.java.io.File;
+  const ElementLibrary = await lib.de.neemann.digital.draw.library.ElementLibrary;
+  const ShapeFactory   = await lib.de.neemann.digital.draw.shapes.ShapeFactory;
+  const Circuit        = await lib.de.neemann.digital.draw.elements.Circuit;
+  const ModelCreator   = await lib.de.neemann.digital.draw.model.ModelCreator;
+
+  const file = await new File("/str/circuit.dig");
+  const library = await new ElementLibrary();
+  // TODO: setRootFilePath is needed for subcircuit resolution.
+  // In the browser, subcircuits referenced by the .dig file must also be
+  // served and injected. For now, only single-file circuits are supported.
+  const shapeFactory = await new ShapeFactory(library);
+  const circuit = await Circuit.loadCircuit(file, shapeFactory);
+
+  // -- Run embedded test cases ------------------------------------------------
+  if (runTests) {
+    console.log('[bridge] Running embedded test cases...');
+    try {
+      const TestExecutor = await lib.de.neemann.digital.testing.TestExecutor;
+      const testCases = await circuit.getTestCases();
+      const testCount = await testCases.size();
+
+      const results = [];
+      for (let i = 0; i < testCount; i++) {
+        const tc = await testCases.get(i);
+        try {
+          const executor = await new TestExecutor(tc, circuit, library);
+          const result = await executor.execute();
+          results.push({
+            index: i,
+            passed: await result.allPassed(),
+            failedPercent: Number(await result.failedPercent())
+          });
+        } catch (e) {
+          results.push({ index: i, passed: false, error: String(e) });
+        }
+      }
+
+      sendToParent({
+        type: 'digital-test-results',
+        tests: results,
+        allPassed: results.length > 0 && results.every(r => r.passed),
+        testCount: results.length
+      });
+    } catch (e) {
+      sendToParent({ type: 'digital-error', error: 'Test execution failed: ' + e });
+    }
+  }
+
+  // -- Read output values -----------------------------------------------------
+  if (outputs.length > 0) {
+    console.log('[bridge] Reading output values:', outputs);
+    try {
+      const modelCreator = await new ModelCreator(circuit, library);
+      const model = await modelCreator.createModel(true);
+      await model.init(false);  // deterministic initialization
+
+      // Set inputs if provided
+      for (let i = 0; i < inputs.length && i < inputVals.length; i++) {
+        try {
+          const sig = await model.getInput(inputs[i]);
+          if (sig) await sig.setValue(parseInt(inputVals[i], 10));
+        } catch (e) {
+          console.warn('[bridge] Could not set input', inputs[i], ':', e);
+        }
+      }
+
+      // Propagate
+      await model.doStep(false);
+
+      // Read outputs
+      const data = { type: 'digital-data', values: {} };
+      for (const name of outputs) {
+        try {
+          const outVal = await model.getOutput(name);
+          if (outVal) {
+            data.values[name] = {
+              value:   Number(await outVal.getValue()),
+              bool:    Boolean(await outVal.getBool()),
+              highZ:   Boolean(await outVal.isHighZ()),
+              bits:    Number(await outVal.getBits()),
+              display: String(await outVal.getValueString())
+            };
+          } else {
+            data.values[name] = null;
+          }
+        } catch (e) {
+          data.values[name] = null;
+        }
+      }
+
+      sendToParent(data);
+      await model.close();
+
+    } catch (e) {
+      sendToParent({ type: 'digital-error', error: 'Model creation failed: ' + e });
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// GUI mode: full Swing app + on-demand headless grading
+// ---------------------------------------------------------------------------
+async function runGui(circuitBytes) {
+  console.log('[bridge] GUI mode: launching Digital Swing app...');
+
+  cheerpjCreateDisplay(-1, -1, document.getElementById("sim-container"));
+
+  // Inject circuit file if provided
+  let args = [];
+  if (circuitBytes) {
+    cheerpOSAddStringFile("/str/circuit.dig", circuitBytes);
+    args.push("/str/circuit.dig");
+  }
+
+  // Listen for grading requests from the parent
+  // When a 'digital-grade' message arrives, we spin up a headless instance
+  // that loads the circuit from /files/ (where Digital saves) and runs tests.
+  window.addEventListener('message', async function(event) {
+    if (!event.data) return;
+
+    if (event.data.type === 'digital-grade') {
+      console.log('[bridge] Grade request received — running headless grading pass');
+      try {
+        // TODO: Read the current circuit state from CheerpJ's /files/ filesystem.
+        // Digital's File->Save writes to the CheerpJ virtual filesystem.
+        // We need to detect where it saved and read that file back.
+        // For now, we re-grade the ORIGINAL circuit (not student modifications).
+        // This is a known limitation of the MVP.
+        if (circuitBytes) {
+          const lib = await cheerpjRunLibrary(jarPath);
+          await runHeadless(lib, circuitBytes);
+        } else {
+          sendToParent({ type: 'digital-error', error: 'No circuit data to grade' });
+        }
+      } catch (e) {
+        sendToParent({ type: 'digital-error', error: 'Grading failed: ' + e });
+      }
+    }
+
+    if (event.data.type === 'digital-load' && event.data.digData) {
+      // TODO: Reload the Swing app with new circuit data.
+      // CheerpJ does not support restarting a JAR — this would require
+      // reloading the entire page. For now, log and ignore.
+      console.warn('[bridge] dynamic circuit reload not yet supported');
+    }
+  });
+
+  // Launch the Swing application
+  if (args.length > 0) {
+    await cheerpjRunJar(jarPath, ...args);
+  } else {
+    await cheerpjRunJar(jarPath);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main entry point
+// ---------------------------------------------------------------------------
+(async function() {
+  try {
+    const circuitBytes = await getCircuitBytes();
+
+    if (!circuitBytes && mode === 'headless') {
+      sendToParent({ type: 'digital-error', error: 'No circuit data provided (dig or digData param required)' });
+      return;
+    }
+
+    console.log('[bridge] Initializing CheerpJ (mode=' + mode + ')...');
+
+    if (mode === 'headless') {
+      // Headless mode — no display needed, faster startup
+      await cheerpjInit({ status: "none" });
+      const lib = await cheerpjRunLibrary(jarPath);
+      await runHeadless(lib, circuitBytes);
+    } else {
+      // GUI mode — full Swing app
+      await cheerpjInit({
+        clipboardMode: "system",
+        status: "none",
+        overrideShortcuts: (e) => {
+          if (e.ctrlKey && (e.key === 's' || e.key === 'z' || e.key === 'y')) return true;
+          return false;
+        }
+      });
+      await runGui(circuitBytes);
+    }
+
+    sendToParent({ type: 'digital-ready' });
+
+  } catch (e) {
+    console.error('[bridge] Fatal error:', e);
+    sendToParent({ type: 'digital-error', error: String(e) });
+  }
+})();
+</script>
+</body>
+</html>

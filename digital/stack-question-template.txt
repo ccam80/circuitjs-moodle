@@ -1,0 +1,218 @@
+===========================================================================
+STACK QUESTION TEMPLATE: Digital Logic — Graded Simulation
+===========================================================================
+Copy these values into the corresponding fields when creating a new
+STACK question in Moodle. Replace BRIDGE_URL with your hosted URL.
+
+BRIDGE_URL = https://YOUR_GITHUB_USERNAME.github.io/circuitjs-moodle/digital/bridge.html
+
+This template uses HEADLESS mode: the student builds their circuit in
+Digital (GUI mode), exports the .dig file, and submits it. The bridge
+loads the .dig file headlessly, runs the embedded test cases, and
+reports pass/fail to STACK for grading.
+
+For GUI-mode grading (student works in-browser), see the variant at
+the bottom of this file.
+
+---------------------------------------------------------------------------
+FIELD: Question name
+---------------------------------------------------------------------------
+2-Input AND Gate — Digital Logic Graded
+
+---------------------------------------------------------------------------
+FIELD: Question variables (Maxima)
+---------------------------------------------------------------------------
+/* Number of test cases the student circuit must pass */
+required_tests: 1;
+
+---------------------------------------------------------------------------
+FIELD: Question text (CASText + HTML)
+---------------------------------------------------------------------------
+<p>Design a 2-input AND gate circuit in Digital. Your circuit must have:</p>
+<ul>
+  <li>Two inputs named <code>A</code> and <code>B</code></li>
+  <li>One output named <code>Y</code></li>
+  <li>An embedded test case that verifies the truth table</li>
+</ul>
+
+<p>Use the Digital simulator below to build and test your circuit.
+When you are satisfied, click <strong>Submit</strong> to grade it.</p>
+
+[[iframe height="680px" width="920px"]]
+<div style="font-family:sans-serif;">
+
+  <!-- Digital GUI for the student to build their circuit -->
+  <iframe id="digital-gui"
+    src="BRIDGE_URL?mode=gui"
+    width="900" height="600" style="border:1px solid #ccc;">
+  </iframe>
+
+  <!-- Hidden headless grading bridge (0x0, invisible) -->
+  <iframe id="digital-grader" width="0" height="0"
+    style="display:none;"></iframe>
+
+  <!-- Status display -->
+  <div id="grade-status" style="font-family:monospace; padding:8px; font-size:14px;">
+    Status: <span id="status-text">Build your circuit, then click Submit</span>
+  </div>
+
+</div>
+
+[[script type="module"]]
+import {stack_js} from '[[cors src="stackjsiframe.js"/]]';
+
+// Request write access to STACK inputs
+const inputId = await stack_js.request_access_to_input("ans1", true);
+const stackInput = document.getElementById(inputId);
+
+// Listen for grading results from the headless bridge
+window.addEventListener('message', function(event) {
+  if (!event.data) return;
+
+  if (event.data.type === 'digital-test-results') {
+    var allPassed = event.data.allPassed;
+    var statusEl = document.getElementById('status-text');
+
+    if (allPassed) {
+      statusEl.textContent = 'All ' + event.data.testCount + ' test(s) passed!';
+      statusEl.style.color = '#2e7d32';
+      stackInput.value = event.data.testCount;
+    } else {
+      var failed = event.data.tests.filter(function(t){ return !t.passed; }).length;
+      statusEl.textContent = failed + ' of ' + event.data.testCount + ' test(s) failed.';
+      statusEl.style.color = '#c62828';
+      stackInput.value = 0;
+    }
+    stackInput.dispatchEvent(new Event('change'));
+  }
+
+  if (event.data.type === 'digital-error') {
+    document.getElementById('status-text').textContent = 'Error: ' + event.data.error;
+    document.getElementById('status-text').style.color = '#c62828';
+  }
+});
+
+// TODO: The grading workflow needs further development:
+//
+// Option A (current MVP): Student builds circuit in GUI mode, then
+// the instructor provides a reference .dig file with test cases.
+// The student's circuit is graded against those test cases.
+//
+// Option B (future): Student exports their .dig file, uploads it
+// to Moodle as a file submission, and server-side grading runs the
+// tests headlessly.
+//
+// Option C (future): The bridge captures the circuit state from the
+// running Swing app via CheerpJ's /files/ virtual filesystem and
+// sends it to the headless grader automatically.
+//
+// For now, the template demonstrates the postMessage protocol.
+// The actual file-transfer mechanism between GUI and grader is TBD.
+[[/script]]
+[[/iframe]]
+
+---------------------------------------------------------------------------
+FIELD: Input: ans1 — configuration
+---------------------------------------------------------------------------
+Input type:       Algebraic input
+Model answer:     required_tests
+Input box size:   5
+Hide input:       YES   (the iframe writes to it programmatically)
+Forbid float:     NO
+Require min/max:  NO
+
+---------------------------------------------------------------------------
+FIELD: Potential Response Tree (PRT)
+---------------------------------------------------------------------------
+PRT name:  prt1
+Feedback variables:  (leave empty)
+
+NODE 1:
+  Student answer (SAns):  ans1
+  Teacher answer (TAns):  required_tests
+  Answer test:            AlgEquiv
+  Quiet:                  Yes
+  Auto-simplify:          Yes
+
+  TRUE  branch:  Score = 1, Penalty = 0
+    Feedback:  <p>Correct! Your circuit passed all embedded test cases.</p>
+
+  FALSE branch:  Score = 0, Penalty = 0
+    Feedback:  <p>Your circuit did not pass all test cases.
+               Check your truth table and try again.</p>
+
+
+===========================================================================
+VARIANT: Headless-only grading (no GUI, pre-built circuit)
+===========================================================================
+Use this when you want to provide a circuit and have the student answer
+questions about it (e.g., "what is the output when A=1, B=0?").
+
+---------------------------------------------------------------------------
+FIELD: Question text (CASText + HTML)
+---------------------------------------------------------------------------
+<p>The circuit below implements a logic function.
+What is the output \(Y\) when \(A = 1\) and \(B = 0\)?</p>
+
+[[iframe height="80px" width="400px"]]
+<div style="font-family:monospace; padding:8px;">
+  Output Y = <span id="output-display">&mdash;</span>
+</div>
+
+<!-- Headless bridge: loads circuit, sets inputs, reads output -->
+<iframe id="bridge"
+  src="BRIDGE_URL?mode=headless&dig=circuits/mystery.dig&inputs=A,B&inputVals=1,0&outputs=Y"
+  width="0" height="0" style="display:none;">
+</iframe>
+
+[[script type="module"]]
+import {stack_js} from '[[cors src="stackjsiframe.js"/]]';
+const inputId = await stack_js.request_access_to_input("ans1", true);
+const stackInput = document.getElementById(inputId);
+
+window.addEventListener('message', function(event) {
+  if (!event.data || event.data.type !== 'digital-data') return;
+
+  var y = event.data.values['Y'];
+  if (!y) return;
+
+  document.getElementById('output-display').textContent = y.display;
+  // Write the boolean value (0 or 1) to STACK for grading
+  stackInput.value = y.bool ? 1 : 0;
+  stackInput.dispatchEvent(new Event('change'));
+});
+[[/script]]
+[[/iframe]]
+
+
+---------------------------------------------------------------------------
+NOTES
+---------------------------------------------------------------------------
+1. Replace BRIDGE_URL with your actual GitHub Pages URL.
+
+2. Circuit files (.dig) must be hosted alongside bridge.html.
+   Place them in a circuits/ subdirectory and reference via the
+   dig= parameter: dig=circuits/myfile.dig
+
+3. To create a .dig file with embedded test cases:
+   a) Open Digital (desktop or browser version)
+   b) Build your circuit with labeled Input/Output components
+   c) Add a test case: Components -> I/O -> Test Case
+   d) Define the truth table in the test case dialog
+   e) Save the .dig file
+
+4. CheerpJ loads ~10 MB on first visit (cached afterwards).
+   Headless mode is faster since it skips Swing initialization.
+
+5. The headless bridge runs a one-shot simulation:
+   set inputs -> step -> read outputs -> report.
+   For sequential circuits (flip-flops, clocks), you would need
+   multiple steps with a clock signal. This requires extending
+   the bridge to support multi-step simulation sequences.
+
+6. Subcircuit resolution: If your .dig file uses subcircuits
+   (nested .dig files), those must also be served and accessible.
+   The current bridge only supports single-file circuits.
+
+7. For multi-answer grading (e.g., check multiple outputs),
+   add more STACK inputs (ans2, ans3) and more PRT nodes.
