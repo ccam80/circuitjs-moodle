@@ -13,6 +13,8 @@
     iframe { border: 1px solid #999; display: block; }
     h3 { margin-top: 0; }
     .note { color: #666; font-size: 13px; margin-bottom: 10px; }
+    .integrity-ok  { color: #090; font-weight: bold; }
+    .integrity-fail { color: #c00; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -20,11 +22,19 @@
 <h3>CircuitJS1 Bridge Test</h3>
 <p class="note">
   User circuit loaded via ctz parameter. The element listing shows all
-  circuit components on load. Labeled nodes (if any) stream live values.
+  circuit components on load. Labeled nodes stream live voltage values.
+  The <code>measures=</code> parameter reads current/voltage/power from
+  labeled elements. The <code>elements=</code> parameter reads by index.
+  <br><br>
+  <strong>Integrity checking:</strong> <code>editableIndices=0,1</code>
+  marks elements 0 and 1 as student-editable. All other components are
+  locked — editing them sets <code>integrity</code> to 0. If no
+  <code>editableIndices</code> param is present, integrity checking is
+  disabled and the field won't appear.
 </p>
 
 <iframe id="bridge-frame"
-  src="bridge.html?v=3&ctz=CQAgjCAMB0l3BWEA2aAWB8CcBmSy0AOBBAdkJE0sskoFMBaMMAKAGMQAmNWsZWnr34g0UWPAidomSFgSccpTmBwICyMXAiQWAJxFxwwwV0IVaqlgHkDQ2gjCcjtFywDmt0xRM5OLqCxgpLTcdlyQFHwW4eDw1DCsfqSeUSJ84JzeIABmAJYANgAuLElcSs5lTo5ZAIIAwiwA9iJGUAZYFEgw8LKkyGqcXVwtOCC5AHZNw+kCshRSXeJwWH0DSBAQjQCuxQAWIKPaLEA&nodes=AC,filt,out&rate=4&editable=true"
+  src="bridge.html?v=5&ctz=CQAgjCAMB0l3BWEA2aAWB8CcBmSy0AOBBAdkJE0sskoFMBaMMAKAGMQAmNWsZWnr34g0UWPAidomSFgSccpTmBwICyMXAiQWAJxFxwwwV0IVaqlgHkDQ2gjCcjtFywDmt0xRM5OLqCxgpLTcdlyQFHwW4eDw1DCsfqSeUSJ84JzeIABmAJYANgAuLElcSs5lTo5ZAIIAwiwA9iJGUAZYFEgw8LKkyGqcXVwtOCC5AHZNw+kCshRSXeJwWH0DSBAQjQCuxQAWIKPaLEA&nodes=AC,filt,out&measures=R1:current,R1:voltageDiff,R1:power&elements=0:current,0:power&editableIndices=0,1&rate=4&editable=true"
   width="800" height="550">
 </iframe>
 
@@ -34,6 +44,13 @@
 var readout = document.getElementById('readout');
 var messageCount = 0;
 
+function unitForKey(key) {
+  if (key === 'integrity') return '';
+  if (key.indexOf(':current') !== -1) return 'A';
+  if (key.indexOf(':power') !== -1)   return 'W';
+  return 'V';
+}
+
 window.addEventListener('message', function(event) {
   if (!event.data) return;
 
@@ -42,9 +59,22 @@ window.addEventListener('message', function(event) {
     var lines = ['=== circuitjs-data (message #' + messageCount + ') ==='];
     for (var key in event.data.values) {
       var val = event.data.values[key];
-      lines.push('  ' + key + ' = ' + (val !== null ? val.toFixed(6) : 'null') + ' V');
+      var unit = unitForKey(key);
+      if (key === 'integrity') {
+        var cls = val === 1 ? 'integrity-ok' : 'integrity-fail';
+        var label = val === 1 ? 'PASS' : 'FAIL';
+        lines.push('  integrity = ' + label);
+      } else {
+        lines.push('  ' + key + ' = ' + (val !== null ? val.toFixed(6) : 'null') + ' ' + unit);
+      }
     }
-    readout.textContent = lines.join('\n');
+    readout.innerHTML = lines.join('\n').replace(
+      /integrity = PASS/,
+      '<span class="integrity-ok">integrity = PASS</span>'
+    ).replace(
+      /integrity = FAIL/,
+      '<span class="integrity-fail">integrity = FAIL</span>'
+    );
   }
 
   if (event.data.type === 'circuitjs-elements') {
@@ -52,7 +82,7 @@ window.addEventListener('message', function(event) {
     event.data.elements.forEach(function(e) {
       lines.push('  [' + e.index + '] ' + e.type + (e.label ? '  label="' + e.label + '"' : ''));
     });
-    readout.textContent = lines.join('\n') + '\n\n' + readout.textContent;
+    readout.innerHTML = lines.join('\n') + '\n\n' + readout.innerHTML;
   }
 });
 </script>

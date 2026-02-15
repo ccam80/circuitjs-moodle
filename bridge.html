@@ -30,7 +30,14 @@
   var startCircuit = getParam('startCircuit');
   var nodes        = getParam('nodes').split(',').filter(Boolean);
   var elements     = getParam('elements').split(',').filter(Boolean);
+  var measures     = getParam('measures').split(',').filter(Boolean);
   var rate         = parseInt(getParam('rate') || '4', 10);
+
+  // Integrity checking: which element indices students may edit
+  var editableIndices = new Set(
+    getParam('editableIndices').split(',').filter(Boolean).map(Number));
+  var baselineSignatures = null;  // null until first onanalyze
+  var integrityOk = 1;
 
   // Display options — all default to showing controls
   var editable      = getParam('editable')        || 'true';
@@ -60,6 +67,43 @@
   var connected = false;
   var updateCount = 0;
   var skipEvery = Math.max(1, Math.round(60 / rate));
+  var labelMap = {};  // label -> element, rebuilt on each circuit analysis
+
+  // -- Integrity checking helpers -------------------------------------------
+  // Non-element line prefixes in Falstad export format
+  var NON_ELEMENT_PREFIXES = ['$', 'w', 'o', '38', 'h', '&'];
+
+  function extractSignatures(exportText, elements) {
+    // Split export text into lines, filter to element lines only
+    var lines = exportText.split('\n').filter(function(line) {
+      line = line.trim();
+      if (!line) return false;
+      for (var p = 0; p < NON_ELEMENT_PREFIXES.length; p++) {
+        var pfx = NON_ELEMENT_PREFIXES[p];
+        if (line === pfx || line.indexOf(pfx + ' ') === 0) return false;
+      }
+      return true;
+    });
+
+    // Safety check: element lines must match element count
+    if (lines.length !== elements.length) return null;
+
+    var sigs = [];
+    for (var i = 0; i < lines.length; i++) {
+      var fields = lines[i].split(' ');
+      var typeCode = fields[0];
+      // Post count determines where coordinate fields end
+      var postCount;
+      try { postCount = elements[i].getPostCount(); } catch(e) { postCount = 2; }
+      // Element line format: type x1 y1 x2 y2 flags param1 param2 ...
+      // For N-post elements: type (x y)*N flags params...
+      var firstParamIndex = 2 * postCount + 2;  // +1 for type, +1 for flags
+      // Signature = type code + parameter fields (excludes coords and flags)
+      var paramFields = fields.slice(firstParamIndex);
+      sigs.push(typeCode + ' ' + paramFields.join(' '));
+    }
+    return sigs;
+  }
 
   function initSim(circuitJS1) {
     if (connected) return;  // only init once
@@ -94,11 +138,38 @@
                 if (prop === 'current')     data.values[elements[j]] = allElems[idx].getCurrent();
                 if (prop === 'voltageDiff') data.values[elements[j]] = allElems[idx].getVoltageDiff();
                 if (prop === 'voltage')     data.values[elements[j]] = allElems[idx].getVoltageDiff();
+                if (prop === 'power')       data.values[elements[j]] = allElems[idx].getVoltageDiff() * allElems[idx].getCurrent();
               } catch(e) {
                 data.values[elements[j]] = null;
               }
             }
           }
+        }
+
+        // Read labeled element properties (e.g. "R1:current", "R1:power")
+        for (var m = 0; m < measures.length; m++) {
+          var mparts = measures[m].split(':');
+          var mlabel = mparts[0];
+          var mprop  = mparts[1] || 'current';
+          var melem  = labelMap[mlabel];
+          if (melem) {
+            try {
+              if (mprop === 'current')          data.values[measures[m]] = melem.getCurrent();
+              else if (mprop === 'voltageDiff') data.values[measures[m]] = melem.getVoltageDiff();
+              else if (mprop === 'voltage0')    data.values[measures[m]] = melem.getVoltage(0);
+              else if (mprop === 'voltage1')    data.values[measures[m]] = melem.getVoltage(1);
+              else if (mprop === 'power')       data.values[measures[m]] = melem.getVoltageDiff() * melem.getCurrent();
+            } catch(e) {
+              data.values[measures[m]] = null;
+            }
+          } else {
+            data.values[measures[m]] = null;
+          }
+        }
+
+        // Include integrity status if integrity checking is active
+        if (editableIndices.size > 0) {
+          data.values['integrity'] = integrityOk;
         }
 
         window.parent.postMessage(data, '*');
@@ -111,11 +182,37 @@
       try {
         var elems = sim.getElements();
         var info = [];
+        labelMap = {};  // rebuild on every re-analysis (circuit may have changed)
         for (var k = 0; k < elems.length; k++) {
           var e = elems[k];
-          info.push({ index: k, type: e.getType(), label: e.getLabelName ? e.getLabelName() : '' });
+          var lbl = '';
+          try { lbl = e.getLabelName() || ''; } catch(x) {}
+          info.push({ index: k, type: e.getType(), label: lbl });
+          if (lbl) labelMap[lbl] = e;
         }
         window.parent.postMessage({ type: 'circuitjs-elements', elements: info }, '*');
+
+        // Integrity checking: detect unauthorized component modifications
+        if (editableIndices.size > 0) {
+          var exported = sim.exportCircuit();
+          var sigs = extractSignatures(exported, elems);
+          if (sigs) {
+            if (!baselineSignatures) {
+              baselineSignatures = sigs;  // First load — capture baseline
+            } else {
+              // Compare non-editable elements
+              integrityOk = 1;
+              for (var ci = 0; ci < baselineSignatures.length; ci++) {
+                if (editableIndices.has(ci)) continue;
+                if (ci >= sigs.length || sigs[ci] !== baselineSignatures[ci]) {
+                  integrityOk = 0;
+                  break;
+                }
+              }
+              if (sigs.length !== baselineSignatures.length) integrityOk = 0;
+            }
+          }
+        }
       } catch(e) {
         // Swallow — circuit may be in transient state during re-analysis
       }

@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<quiz>
+  <question type="stack">
+    <name>
+      <text>CircuitJS1 Integration Test - Output Voltage</text>
+    </name>
+    <questiontext format="html">
+      <text><![CDATA[<p>The circuit below is a filter. Observe the simulation and note the
+output voltage reading. The value is captured automatically from the simulator,
+but you can also type in the input field to test grading.</p>
+
+<p>Target: <strong>{@target_voltage@}</strong> V (&plusmn; {@tol@} V)</p>
+
+<p><em>Right-click a component and choose "Edit..." to change its value.
+The readout updates live.</em></p>
+
+[[iframe height="640px" width="830px"]]
+<div style="font-family:sans-serif;">
+
+  <iframe id="sim-bridge"
+    src="https://ccam80.github.io/circuitjs-moodle/bridge.html?ctz=CQAgjCAMB0l3BWEA2aAWB8CcBmSy0AOBBAdkJE0sskoFMBaMMAKAGMQAmNWsZWnr34g0UWPAidomSFgSccpTmBwICyMXAiQWAJxFxwwwV0IVaqlgHkDQ2gjCcjtFywDmt0xRM5OLqCxgpLTcdlyQFHwW4eDw1DCsfqSeUSJ84JzeIABmAJYANgAuLElcSs5lTo5ZAIIAwiwA9iJGUAZYFEgw8LKkyGqcXVwtOCC5AHZNw+kCshRSXeJwWH0DSBAQjQCuxQAWIKPaLEA&amp;nodes=AC,filt,out&amp;editable=true&amp;rate=2&amp;whiteBackground=true"
+    width="800" height="550" style="border:1px solid #ccc;">
+  </iframe>
+
+  <div id="readout" style="font-family:monospace; padding:8px; font-size:14px;
+    background:#f4f4f4; border:1px solid #ddd; margin-top:4px;">
+    AC = <span id="val-AC">&mdash;</span> V<br/>
+    filt = <span id="val-filt">&mdash;</span> V<br/>
+    out = <span id="val-out" style="font-weight:bold;">&mdash;</span> V <span style="color:#090;">(graded)</span>
+    <div id="status" style="color:#999; margin-top:4px;">(waiting for simulation...)</div>
+  </div>
+
+</div>
+
+[[script type="module"]]
+import {stack_js} from '[[cors src="stackjsiframe.js"/]]';
+
+const inputId = await stack_js.request_access_to_input("ans1", true);
+const stackInput = document.getElementById(inputId);
+
+window.addEventListener('message', function(event) {
+  if (!event.data || event.data.type !== 'circuitjs-data') return;
+  var v;
+
+  v = event.data.values['AC'];
+  if (v !== null && v !== undefined) document.getElementById('val-AC').textContent = v.toFixed(3);
+  v = event.data.values['filt'];
+  if (v !== null && v !== undefined) document.getElementById('val-filt').textContent = v.toFixed(3);
+  v = event.data.values['out'];
+  if (v !== null && v !== undefined) document.getElementById('val-out').textContent = v.toFixed(3);
+
+  var graded = event.data.values['out'];
+  if (graded !== null && graded !== undefined) {
+    document.getElementById('status').textContent = '(live)';
+    stackInput.value = graded.toFixed(6);
+    stackInput.dispatchEvent(new Event('change'));
+  }
+});
+[[/script]]
+[[/iframe]]
+
+<p>Measured voltage: [[input:ans1]] V [[validation:ans1]]</p>
+]]></text>
+    </questiontext>
+    <generalfeedback format="html">
+      <text><![CDATA[<p>The target voltage was {@target_voltage@} V with a tolerance of &plusmn; {@tol@} V.</p>
+<p>Your circuit produced {@ans1@} V at the <code>out</code> node.</p>]]></text>
+    </generalfeedback>
+    <defaultgrade>1</defaultgrade>
+    <penalty>0.1</penalty>
+    <hidden>0</hidden>
+    <plugin qtype="stack">
+      <stackversion>
+        <text/>
+      </stackversion>
+      <questionvariables>
+        <text><![CDATA[target_voltage: 1.5;
+tol: 0.2;
+]]></text>
+      </questionvariables>
+      <specificfeedback format="html">
+        <text><![CDATA[[[feedback:prt1]]]]></text>
+      </specificfeedback>
+      <questionnote format="html">
+        <text><![CDATA[target={@target_voltage@}, tol={@tol@}]]></text>
+      </questionnote>
+      <questiondescription format="html">
+        <text/>
+      </questiondescription>
+      <questionsimplify>1</questionsimplify>
+      <assumepositive>0</assumepositive>
+      <assumereal>0</assumereal>
+      <prtcorrect format="html">
+        <text><![CDATA[<span style="font-size: 1.5em; color:green;"><i class="fa fa-check"></i></span> Correct answer, well done.]]></text>
+      </prtcorrect>
+      <prtpartiallycorrect format="html">
+        <text><![CDATA[<span style="font-size: 1.5em; color:orange;"><i class="fa fa-adjust"></i></span> Your answer is partially correct.]]></text>
+      </prtpartiallycorrect>
+      <prtincorrect format="html">
+        <text><![CDATA[<span style="font-size: 1.5em; color:red;"><i class="fa fa-times"></i></span> Incorrect answer.]]></text>
+      </prtincorrect>
+      <decimals>
+        <text>.</text>
+      </decimals>
+      <scientificnotation>
+        <text>*10</text>
+      </scientificnotation>
+      <multiplicationsign>dot</multiplicationsign>
+      <sqrtsign>1</sqrtsign>
+      <complexno>j</complexno>
+      <inversetrig>cos-1</inversetrig>
+      <logicsymbol>lang</logicsymbol>
+      <matrixparens>[</matrixparens>
+      <variantsselectionseed/>
+      <input>
+        <name>ans1</name>
+        <type>numerical</type>
+        <tans>target_voltage</tans>
+        <boxsize>10</boxsize>
+        <strictsyntax>1</strictsyntax>
+        <insertstars>0</insertstars>
+        <syntaxhint/>
+        <syntaxattribute>0</syntaxattribute>
+        <forbidwords/>
+        <allowwords/>
+        <forbidfloat>0</forbidfloat>
+        <requirelowestterms>0</requirelowestterms>
+        <checkanswertype>0</checkanswertype>
+        <mustverify>1</mustverify>
+        <showvalidation>1</showvalidation>
+        <options/>
+      </input>
+      <prt>
+        <name>prt1</name>
+        <value>1.0000000</value>
+        <autosimplify>1</autosimplify>
+        <feedbackstyle>1</feedbackstyle>
+        <feedbackvariables>
+          <text/>
+        </feedbackvariables>
+        <node>
+          <name>0</name>
+          <description>Check out voltage against target</description>
+          <answertest>NumAbsolute</answertest>
+          <sans>ans1</sans>
+          <tans>target_voltage</tans>
+          <testoptions>tol</testoptions>
+          <quiet>0</quiet>
+          <truescoremode>=</truescoremode>
+          <truescore>1.0</truescore>
+          <truepenalty/>
+          <truenextnode>-1</truenextnode>
+          <trueanswernote>prt1-1-T</trueanswernote>
+          <truefeedback format="html">
+            <text><![CDATA[<p>Correct! The measured voltage {@ans1@} V is within {@tol@} V of the target {@target_voltage@} V.</p>]]></text>
+          </truefeedback>
+          <falsescoremode>=</falsescoremode>
+          <falsescore>0.0</falsescore>
+          <falsepenalty/>
+          <falsenextnode>-1</falsenextnode>
+          <falseanswernote>prt1-1-F</falseanswernote>
+          <falsefeedback format="html">
+            <text><![CDATA[<p>Not quite. The measured voltage was {@ans1@} V, but the target is {@target_voltage@} V (&plusmn; {@tol@} V).</p>]]></text>
+          </falsefeedback>
+        </node>
+      </prt>
+      <qtest>
+        <testcase>1</testcase>
+        <description>Correct answer</description>
+        <testinput>
+          <name>ans1</name>
+          <value>target_voltage</value>
+        </testinput>
+        <expected>
+          <name>prt1</name>
+          <expectedscore>1.0000000</expectedscore>
+          <expectedpenalty>0.0000000</expectedpenalty>
+          <expectedanswernote>prt1-1-T</expectedanswernote>
+        </expected>
+      </qtest>
+      <qtest>
+        <testcase>2</testcase>
+        <description>Wrong answer (outside tolerance)</description>
+        <testinput>
+          <name>ans1</name>
+          <value>target_voltage + tol + 1</value>
+        </testinput>
+        <expected>
+          <name>prt1</name>
+          <expectedscore>0.0000000</expectedscore>
+          <expectedpenalty>0.1000000</expectedpenalty>
+          <expectedanswernote>prt1-1-F</expectedanswernote>
+        </expected>
+      </qtest>
+    </plugin>
+    <tags>
+      <tag>
+        <text>circuitjs</text>
+      </tag>
+      <tag>
+        <text>integration-test</text>
+      </tag>
+    </tags>
+  </question>
+</quiz>
