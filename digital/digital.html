@@ -41,12 +41,24 @@
   // digital.html — CheerpJ Swing loader for hneemann/Digital
   //
   // Runs Digital.jar as a full Swing application in the browser.
+  //
   // URL parameters:
   //   dig=<url>      — Fetch a .dig circuit file from this URL and open it
   //   digData=<b64>  — Base64-encoded .dig file content (for inline circuits)
   //
-  // The /app/ prefix in CheerpJ maps to the web server document root.
-  // Digital.jar must be served from the same directory as this HTML file.
+  // postMessage API (parent → this frame):
+  //   { type: 'digital-load-url', url: '<url>' }
+  //       Fetch a .dig file from the URL and open it in the running instance.
+  //       This avoids a full JVM restart — the file is injected into the
+  //       virtual filesystem and Digital's loadFile() is called directly.
+  //
+  //   { type: 'digital-load-data', data: '<base64>' }
+  //       Same, but with base64-encoded .dig content inline.
+  //
+  // postMessage API (this frame → parent):
+  //   { type: 'digital-ready' }     — CheerpJ + Digital fully initialized
+  //   { type: 'digital-loaded' }    — A checkpoint file was loaded
+  //   { type: 'digital-error', error: '...' }
   // ---------------------------------------------------------------------------
 
   const params = new URLSearchParams(window.location.search);
@@ -59,19 +71,113 @@
     console.log('[digital]', msg);
   }
 
+  function sendToParent(data) {
+    try { window.parent.postMessage(data, '*'); } catch(e) { /* cross-origin */ }
+  }
+
   // Compute the CheerpJ /app/ path to Digital.jar based on this page's URL
   const basePath = window.location.pathname.substring(
     0, window.location.pathname.lastIndexOf('/')
   );
   const jarPath = '/app' + basePath + '/Digital.jar';
 
+  // Counter for unique virtual file paths (avoids overwriting cached files)
+  let fileCounter = 0;
+
+  // Library handle — initialized after CheerpJ starts, used for hot-reload
+  let lib = null;
+
+  // ---------------------------------------------------------------------------
+  // Hot-reload: load a .dig file into the already-running Digital instance
+  // by injecting it into the virtual FS and calling Main.loadFile() via
+  // the CheerpJ library API.
+  // ---------------------------------------------------------------------------
+  async function hotLoadCircuit(digBytes) {
+    fileCounter++;
+    const vpath = '/str/checkpoint_' + fileCounter + '.dig';
+
+    try {
+      // Inject the file into CheerpJ's virtual filesystem
+      cheerpOSAddStringFile(vpath, digBytes);
+
+      if (!lib) {
+        lib = await cheerpjRunLibrary(jarPath);
+      }
+
+      // Find the running Main frame via AWT's Frame.getFrames()
+      const Frame = await lib.java.awt.Frame;
+      const frames = await Frame.getFrames();
+      const File = await lib.java.io.File;
+
+      let loaded = false;
+      for (let i = 0; i < frames.length; i++) {
+        const f = frames[i];
+        // Check if this frame is an instance of Digital's Main class
+        const className = await (await f.getClass()).getName();
+        if (className === 'de.neemann.digital.gui.Main') {
+          const file = await new File(vpath);
+          // Main.loadFile(File, boolean setLibraryRoot, boolean addToPrefs)
+          await f.loadFile(file, false, false);
+          loaded = true;
+          console.log('[digital] Hot-loaded circuit from', vpath);
+          break;
+        }
+      }
+
+      if (!loaded) {
+        // Fallback: if we can't find the Main frame, report error
+        // This may happen if Digital's class hierarchy differs from expected
+        console.warn('[digital] Could not find Main frame for hot-reload');
+        sendToParent({ type: 'digital-error', error: 'Hot-reload failed: Main frame not found. Try reloading the page.' });
+        return;
+      }
+
+      sendToParent({ type: 'digital-loaded' });
+
+    } catch (e) {
+      console.error('[digital] Hot-reload failed:', e);
+      sendToParent({ type: 'digital-error', error: 'Hot-reload failed: ' + e });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Listen for postMessage commands from the parent (tutorial page)
+  // ---------------------------------------------------------------------------
+  window.addEventListener('message', async function(event) {
+    if (!event.data || !event.data.type) return;
+
+    if (event.data.type === 'digital-load-url') {
+      try {
+        const response = await fetch(event.data.url);
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        await hotLoadCircuit(bytes);
+      } catch (e) {
+        sendToParent({ type: 'digital-error', error: 'Failed to fetch: ' + e });
+      }
+    }
+
+    if (event.data.type === 'digital-load-data') {
+      try {
+        const bin = atob(event.data.data);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        await hotLoadCircuit(bytes);
+      } catch (e) {
+        sendToParent({ type: 'digital-error', error: 'Failed to decode: ' + e });
+      }
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Initial startup
+  // ---------------------------------------------------------------------------
   try {
     setStatus('Initializing CheerpJ runtime (first load downloads ~10 MB)...');
     await cheerpjInit({
       clipboardMode: "system",
-      status: "none",              // we show our own loading overlay
+      status: "none",
       overrideShortcuts: (e) => {
-        // Prevent browser from intercepting Ctrl+S, Ctrl+Z etc.
         if (e.ctrlKey && (e.key === 's' || e.key === 'z' || e.key === 'y')) return true;
         if (e.ctrlKey && e.key === 'a') return true;
         return false;
@@ -81,17 +187,16 @@
     setStatus('Creating display...');
     cheerpjCreateDisplay(-1, -1, document.getElementById("container"));
 
-    // If a .dig circuit was provided, inject it into CheerpJ's virtual filesystem
+    // Load initial circuit if provided via URL params
     let circuitArg = null;
     if (digUrl) {
-      setStatus('Fetching circuit file: ' + digUrl);
+      setStatus('Fetching circuit file...');
       try {
         const response = await fetch(digUrl);
         if (!response.ok) throw new Error('HTTP ' + response.status);
         const data = new Uint8Array(await response.arrayBuffer());
         cheerpOSAddStringFile("/str/circuit.dig", data);
         circuitArg = "/str/circuit.dig";
-        setStatus('Circuit loaded (' + data.length + ' bytes)');
       } catch (e) {
         console.error('[digital] Failed to fetch .dig file:', e);
         setStatus('Warning: could not load circuit file, opening empty');
@@ -99,35 +204,39 @@
     } else if (digData) {
       setStatus('Decoding inline circuit data...');
       try {
-        const binaryString = atob(digData);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
+        const bin = atob(digData);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
         cheerpOSAddStringFile("/str/circuit.dig", bytes);
         circuitArg = "/str/circuit.dig";
-        setStatus('Circuit decoded (' + bytes.length + ' bytes)');
       } catch (e) {
         console.error('[digital] Failed to decode digData:', e);
-        setStatus('Warning: could not decode circuit data, opening empty');
       }
     }
 
-    // Hide the loading overlay — CheerpJ's Swing rendering takes over
+    // Hide loading overlay
     setStatus('Starting Digital...');
     document.getElementById('loading-overlay').classList.add('hidden');
 
-    // Run Digital.jar as a Swing application
-    // If we have a circuit file, pass it as argument so Digital opens it on startup
-    if (circuitArg) {
-      await cheerpjRunJar(jarPath, circuitArg);
-    } else {
-      await cheerpjRunJar(jarPath);
-    }
+    // Launch Digital — runs in the background, cheerpjRunJar resolves when
+    // the app exits (which for a Swing app means "never" during normal use)
+    const runPromise = circuitArg
+      ? cheerpjRunJar(jarPath, circuitArg)
+      : cheerpjRunJar(jarPath);
+
+    // Signal ready after a short delay to let the Swing frame initialize
+    // (cheerpjRunJar doesn't resolve until the app exits, so we can't await it)
+    setTimeout(() => {
+      sendToParent({ type: 'digital-ready' });
+      console.log('[digital] Ready signal sent');
+    }, 2000);
+
+    await runPromise;
 
   } catch (e) {
     console.error('[digital] Fatal error:', e);
     setStatus('Error: ' + e.message);
+    sendToParent({ type: 'digital-error', error: String(e) });
   }
 </script>
 </body>

@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Digital Bridge Test Page</title>
+  <title>Digital Integration Tests</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 20px; background: #fafafa; }
     h2 { margin-top: 0; }
@@ -26,8 +26,9 @@
       padding: 8px 16px; border: 1px solid #ccc; border-radius: 4px;
       background: #fff; cursor: pointer; font-size: 13px; margin-right: 8px;
     }
-    button:hover { background: #f0f0f0; }
-    .controls { margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+    button:hover:not(:disabled) { background: #f0f0f0; }
+    button:disabled { opacity: 0.4; }
+    .controls { margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     select, input[type="text"] {
       padding: 6px 10px; border: 1px solid #ccc; border-radius: 4px;
       font-size: 13px;
@@ -45,32 +46,43 @@
 </head>
 <body>
 
-<h2>Digital Bridge Test Harness</h2>
+<h2>Digital Integration Tests</h2>
 <p class="note">
-  Test page for the Digital ↔ Moodle postMessage bridge. Switches between
-  GUI mode (full Swing editor) and headless mode (simulation-only grading).
-  Requires <code>Digital.jar</code> to be present in this directory.
+  Test page for Digital CheerpJ integration. Tests both the tutorial workflow
+  (GUI + checkpoint hot-reload) and the headless simulation bridge.
+  Requires <code>Digital.jar</code> in this directory.
 </p>
 
 <!-- Tab bar -->
 <div class="tab-bar">
-  <div class="tab active" data-tab="gui">GUI Mode</div>
-  <div class="tab" data-tab="headless">Headless Mode</div>
+  <div class="tab active" data-tab="tutorial">Tutorial / GUI</div>
+  <div class="tab" data-tab="headless">Headless Bridge</div>
 </div>
 
-<!-- GUI Mode Panel -->
-<div id="tab-gui" class="tab-panel active">
+<!-- Tutorial / GUI Mode Panel -->
+<div id="tab-tutorial" class="tab-panel active">
   <div class="section">
-    <h3>GUI Mode — Full Swing Editor</h3>
+    <h3>Tutorial Mode — GUI + Checkpoint Hot-Reload</h3>
     <p class="note">
-      Loads Digital.jar as a full Swing application via CheerpJ.
-      Click "Grade Circuit" to send a grading request via postMessage.
+      Tests the core tutorial workflow: launch Digital, then hot-load checkpoint
+      .dig files into the running instance via postMessage (no JVM restart).
     </p>
     <div class="controls">
-      <button id="btn-launch-gui">Launch Digital (GUI)</button>
-      <button id="btn-grade" disabled>Grade Circuit</button>
+      <button id="btn-launch">Launch Digital</button>
+      <span style="color:#999;">|</span>
+      <label>Load checkpoint:
+        <select id="checkpoint-select">
+          <option value="">-- select --</option>
+          <option value="circuits/and-gate.dig">AND Gate</option>
+          <option value="circuits/half-adder.dig">Half Adder</option>
+          <option value="circuits/sr-latch.dig">SR Latch</option>
+        </select>
+      </label>
+      <button id="btn-load-checkpoint" disabled>Send to Digital</button>
+      <span style="color:#999;">|</span>
+      <a href="tutorial.html" target="_blank" style="font-size:13px;">Open full tutorial page &rarr;</a>
     </div>
-    <iframe id="gui-frame" width="900" height="600" style="display:none;"></iframe>
+    <iframe id="gui-frame" width="900" height="550" style="display:none;"></iframe>
   </div>
 </div>
 
@@ -80,7 +92,7 @@
     <h3>Headless Mode — Simulation + Test Grading</h3>
     <p class="note">
       Loads a .dig circuit without GUI. Reads outputs and/or runs embedded tests.
-      Results appear in the log below.
+      Results appear in the log below. (For future STACK/Moodle grading integration.)
     </p>
     <div class="controls">
       <label>Circuit:
@@ -144,21 +156,31 @@
     });
   });
 
-  // -- GUI Mode ---------------------------------------------------------------
+  // -- Tutorial / GUI Mode ----------------------------------------------------
   var guiFrame = document.getElementById('gui-frame');
-  var btnGrade = document.getElementById('btn-grade');
+  var btnLoadCheckpoint = document.getElementById('btn-load-checkpoint');
+  var checkpointSelect = document.getElementById('checkpoint-select');
+  var digitalReady = false;
 
-  document.getElementById('btn-launch-gui').addEventListener('click', function() {
+  document.getElementById('btn-launch').addEventListener('click', function() {
     guiFrame.style.display = 'block';
-    guiFrame.src = 'bridge.html?mode=gui';
-    log('Launching GUI mode...', 'log-info');
+    guiFrame.src = 'digital.html';
+    log('Launching Digital (GUI mode)...', 'log-info');
     this.disabled = true;
-    btnGrade.disabled = false;
   });
 
-  btnGrade.addEventListener('click', function() {
-    log('Sending grade request to bridge...', 'log-info');
-    guiFrame.contentWindow.postMessage({ type: 'digital-grade' }, '*');
+  checkpointSelect.addEventListener('change', function() {
+    btnLoadCheckpoint.disabled = !checkpointSelect.value || !digitalReady;
+  });
+
+  btnLoadCheckpoint.addEventListener('click', function() {
+    var url = checkpointSelect.value;
+    if (!url) return;
+    log('Sending hot-load request: ' + url, 'log-info');
+    guiFrame.contentWindow.postMessage({
+      type: 'digital-load-url',
+      url: url
+    }, '*');
   });
 
   // -- Headless Mode ----------------------------------------------------------
@@ -197,7 +219,7 @@
     headlessFrame.src = url;
   });
 
-  // -- Listen for postMessage from bridge frames ------------------------------
+  // -- Listen for postMessage from all child frames ---------------------------
   window.addEventListener('message', function(event) {
     if (!event.data || !event.data.type) return;
     if (!event.data.type.startsWith('digital-')) return;
@@ -207,7 +229,13 @@
 
     switch (d.type) {
       case 'digital-ready':
-        log('#' + messageCount + ' READY — bridge initialized', 'log-info');
+        digitalReady = true;
+        btnLoadCheckpoint.disabled = !checkpointSelect.value;
+        log('#' + messageCount + ' READY — Digital initialized', 'log-info');
+        break;
+
+      case 'digital-loaded':
+        log('#' + messageCount + ' LOADED — checkpoint hot-loaded successfully', 'log-test-pass');
         break;
 
       case 'digital-data':
@@ -246,7 +274,7 @@
         break;
 
       default:
-        log('#' + messageCount + ' Unknown message type: ' + d.type, 'log-info');
+        log('#' + messageCount + ' ' + d.type, 'log-info');
     }
   });
 
@@ -257,7 +285,7 @@
     log('Log cleared', 'log-info');
   });
 
-  log('Test harness loaded. Choose a mode and run.', 'log-info');
+  log('Test harness loaded. Choose a tab and run.', 'log-info');
 })();
 </script>
 

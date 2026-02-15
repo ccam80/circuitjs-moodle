@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Digital Logic Tutorial</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; font-family: system-ui, -apple-system, sans-serif; }
+    body { display: flex; flex-direction: column; background: #f0f2f5; }
+
+    /* ---------- Top bar ---------- */
+    #topbar {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 16px; background: #fff;
+      border-bottom: 1px solid #ddd; flex-shrink: 0;
+    }
+    #topbar h1 { font-size: 16px; font-weight: 600; margin: 0; color: #333; white-space: nowrap; }
+    #step-nav { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    #step-nav button {
+      padding: 6px 14px; border: 1px solid #ccc; border-radius: 4px;
+      background: #fff; cursor: pointer; font-size: 13px; font-weight: 500;
+    }
+    #step-nav button:hover:not(:disabled) { background: #f5f5f5; }
+    #step-nav button:disabled { opacity: 0.4; cursor: default; }
+    #step-counter { font-size: 13px; color: #666; min-width: 70px; text-align: center; }
+    #step-select {
+      padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px;
+      font-size: 13px; max-width: 250px;
+    }
+
+    /* ---------- Main layout ---------- */
+    #main { display: flex; flex: 1; min-height: 0; }
+
+    /* ---------- Instructions panel ---------- */
+    #instructions {
+      width: 360px; min-width: 260px; max-width: 500px;
+      background: #fff; border-right: 1px solid #ddd;
+      display: flex; flex-direction: column; flex-shrink: 0;
+    }
+    #instructions-header {
+      padding: 12px 16px; border-bottom: 1px solid #eee;
+      font-size: 15px; font-weight: 600; color: #222;
+    }
+    #instructions-body {
+      flex: 1; overflow-y: auto; padding: 16px;
+      font-size: 14px; line-height: 1.65; color: #333;
+    }
+    #instructions-body h1, #instructions-body h2, #instructions-body h3 {
+      margin: 1.2em 0 0.4em; color: #111;
+    }
+    #instructions-body h1 { font-size: 18px; }
+    #instructions-body h2 { font-size: 16px; }
+    #instructions-body h3 { font-size: 14px; }
+    #instructions-body p { margin: 0 0 0.8em; }
+    #instructions-body code {
+      background: #f4f4f4; padding: 2px 5px; border-radius: 3px;
+      font-size: 13px; font-family: 'SF Mono', Consolas, monospace;
+    }
+    #instructions-body pre {
+      background: #f4f4f4; padding: 10px 12px; border-radius: 4px;
+      overflow-x: auto; font-size: 13px; line-height: 1.4;
+    }
+    #instructions-body pre code { background: none; padding: 0; }
+    #instructions-body ul, #instructions-body ol { padding-left: 24px; margin: 0 0 0.8em; }
+    #instructions-body li { margin-bottom: 0.3em; }
+    #instructions-body img { max-width: 100%; border-radius: 4px; margin: 8px 0; }
+    #instructions-body blockquote {
+      margin: 0.8em 0; padding: 8px 14px; border-left: 3px solid #4285f4;
+      background: #f0f6ff; color: #1a3a5c; font-size: 13px;
+    }
+
+    /* Checkpoint button inside instructions */
+    .checkpoint-btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 16px; margin: 8px 0;
+      background: #4285f4; color: #fff; border: none; border-radius: 6px;
+      font-size: 13px; font-weight: 500; cursor: pointer;
+    }
+    .checkpoint-btn:hover { background: #3367d6; }
+    .checkpoint-btn.loaded { background: #34a853; }
+
+    /* Resize handle */
+    #resize-handle {
+      width: 5px; cursor: col-resize; background: transparent;
+      flex-shrink: 0; z-index: 10;
+    }
+    #resize-handle:hover, #resize-handle.active { background: #4285f4; }
+
+    /* ---------- Simulator panel ---------- */
+    #sim-panel { flex: 1; min-width: 400px; display: flex; flex-direction: column; }
+    #sim-status {
+      padding: 6px 12px; background: #fff; border-bottom: 1px solid #ddd;
+      font-size: 12px; color: #888; flex-shrink: 0;
+    }
+    #sim-status.ready { color: #34a853; }
+    #sim-status.error { color: #ea4335; }
+    #sim-frame { flex: 1; border: none; width: 100%; }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 800px) {
+      #main { flex-direction: column; }
+      #instructions { width: 100%; max-width: none; max-height: 40vh; border-right: none; border-bottom: 1px solid #ddd; }
+      #resize-handle { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Top bar with title and navigation -->
+<div id="topbar">
+  <h1 id="tutorial-title">Digital Logic Tutorial</h1>
+  <select id="step-select" title="Jump to step"></select>
+  <div id="step-nav">
+    <button id="btn-prev" disabled title="Previous step">&larr; Prev</button>
+    <span id="step-counter">1 / 1</span>
+    <button id="btn-next" disabled title="Next step">Next &rarr;</button>
+  </div>
+</div>
+
+<!-- Main content: instructions + simulator -->
+<div id="main">
+  <div id="instructions">
+    <div id="instructions-header">Instructions</div>
+    <div id="instructions-body">
+      <p>Loading tutorial...</p>
+    </div>
+  </div>
+  <div id="resize-handle"></div>
+  <div id="sim-panel">
+    <div id="sim-status">Waiting for Digital to start...</div>
+    <iframe id="sim-frame" src="digital.html"></iframe>
+  </div>
+</div>
+
+<script>
+// =============================================================================
+// tutorial.html — Interactive tutorial viewer with embedded Digital simulator
+//
+// Loads a tutorial definition (JSON) and presents step-by-step instructions
+// alongside a live Digital instance. Each step can have a checkpoint .dig file
+// that gets hot-loaded into the running simulator via postMessage.
+//
+// URL parameters:
+//   tutorial=<url>  — URL to a tutorial JSON file (default: tutorial.json)
+//   step=<n>        — Starting step number (1-based, default: 1)
+//
+// Tutorial JSON format:
+//   {
+//     "title": "Building a 4-Bit Adder",
+//     "steps": [
+//       {
+//         "title": "Step 1: Half Adder",
+//         "content": "<p>HTML instructions here...</p>",
+//         "checkpoint": "circuits/half-adder.dig"    // optional
+//       },
+//       ...
+//     ]
+//   }
+//
+// The "content" field is injected as innerHTML. It supports full HTML.
+// If a step has a "checkpoint" field, a "Load Checkpoint" button is shown
+// that hot-loads the .dig file into the running Digital instance.
+// =============================================================================
+
+(function() {
+  // -- State ------------------------------------------------------------------
+  var steps = [];
+  var currentStep = 0;
+  var digitalReady = false;
+
+  // -- DOM refs ---------------------------------------------------------------
+  var titleEl       = document.getElementById('tutorial-title');
+  var selectEl      = document.getElementById('step-select');
+  var counterEl     = document.getElementById('step-counter');
+  var btnPrev       = document.getElementById('btn-prev');
+  var btnNext       = document.getElementById('btn-next');
+  var headerEl      = document.getElementById('instructions-header');
+  var bodyEl        = document.getElementById('instructions-body');
+  var statusEl      = document.getElementById('sim-status');
+  var simFrame      = document.getElementById('sim-frame');
+
+  // -- URL params -------------------------------------------------------------
+  var params      = new URLSearchParams(window.location.search);
+  var tutorialUrl = params.get('tutorial') || 'tutorial.json';
+  var startStep   = parseInt(params.get('step') || '1', 10) - 1;
+
+  // -- Load tutorial JSON -----------------------------------------------------
+  fetch(tutorialUrl)
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' loading ' + tutorialUrl);
+      return r.json();
+    })
+    .then(function(data) {
+      if (!data.steps || !data.steps.length) throw new Error('No steps in tutorial');
+
+      steps = data.steps;
+      titleEl.textContent = data.title || 'Digital Logic Tutorial';
+      document.title = data.title || 'Digital Logic Tutorial';
+
+      // If the first step has a checkpoint, load Digital with it pre-opened
+      if (steps[0] && steps[0].checkpoint) {
+        simFrame.src = 'digital.html?dig=' + encodeURIComponent(steps[0].checkpoint);
+      }
+
+      // Populate step selector
+      selectEl.innerHTML = '';
+      for (var i = 0; i < steps.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = (i + 1) + '. ' + (steps[i].title || 'Step ' + (i + 1));
+        selectEl.appendChild(opt);
+      }
+
+      // Navigate to starting step
+      if (startStep >= 0 && startStep < steps.length) {
+        goToStep(startStep);
+      } else {
+        goToStep(0);
+      }
+    })
+    .catch(function(e) {
+      bodyEl.innerHTML = '<p style="color:#c62828;"><strong>Failed to load tutorial:</strong> ' +
+        e.message + '</p><p>Make sure <code>' + tutorialUrl +
+        '</code> exists and is valid JSON.</p>';
+    });
+
+  // -- Step navigation --------------------------------------------------------
+  function goToStep(idx) {
+    if (idx < 0 || idx >= steps.length) return;
+    currentStep = idx;
+
+    var step = steps[idx];
+    headerEl.textContent = step.title || ('Step ' + (idx + 1));
+    counterEl.textContent = (idx + 1) + ' / ' + steps.length;
+    selectEl.value = idx;
+
+    // Build instructions content
+    var html = step.content || '';
+
+    // Add checkpoint button if this step has one
+    if (step.checkpoint) {
+      html += '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee;">'
+        + '<button class="checkpoint-btn" onclick="window._loadCheckpoint(\'' +
+          step.checkpoint.replace(/'/g, "\\'") + '\', this)">'
+        + 'Load Checkpoint: ' + step.checkpoint.split('/').pop()
+        + '</button>'
+        + '<div style="font-size: 12px; color: #888; margin-top: 4px;">'
+        + 'Opens this milestone circuit in the simulator'
+        + '</div></div>';
+    }
+
+    bodyEl.innerHTML = html;
+    bodyEl.scrollTop = 0;
+
+    // Update nav buttons
+    btnPrev.disabled = (idx === 0);
+    btnNext.disabled = (idx === steps.length - 1);
+
+    // Update URL without reload
+    var newUrl = new URL(window.location);
+    newUrl.searchParams.set('step', idx + 1);
+    history.replaceState(null, '', newUrl);
+  }
+
+  btnPrev.addEventListener('click', function() { goToStep(currentStep - 1); });
+  btnNext.addEventListener('click', function() { goToStep(currentStep + 1); });
+  selectEl.addEventListener('change', function() { goToStep(parseInt(selectEl.value, 10)); });
+
+  // Keyboard navigation
+  document.addEventListener('keydown', function(e) {
+    // Don't intercept if focus is inside the sim iframe or an input
+    if (document.activeElement === simFrame) return;
+    if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+    if (e.key === 'ArrowLeft'  || e.key === 'PageUp')   { e.preventDefault(); goToStep(currentStep - 1); }
+    if (e.key === 'ArrowRight' || e.key === 'PageDown') { e.preventDefault(); goToStep(currentStep + 1); }
+  });
+
+  // -- Checkpoint loading via postMessage to digital.html ---------------------
+  window._loadCheckpoint = function(checkpointUrl, btnEl) {
+    if (!digitalReady) {
+      statusEl.textContent = 'Digital is still loading, please wait...';
+      statusEl.className = 'error';
+      return;
+    }
+
+    statusEl.textContent = 'Loading checkpoint: ' + checkpointUrl;
+    statusEl.className = '';
+    if (btnEl) { btnEl.textContent = 'Loading...'; btnEl.disabled = true; }
+
+    simFrame.contentWindow.postMessage({
+      type: 'digital-load-url',
+      url: checkpointUrl
+    }, '*');
+
+    // Set a timeout in case the hot-load fails silently
+    var timeout = setTimeout(function() {
+      if (btnEl) { btnEl.textContent = 'Retry'; btnEl.disabled = false; }
+      statusEl.textContent = 'Checkpoint load timed out — Digital may not support hot-reload yet. Try clicking again.';
+      statusEl.className = 'error';
+    }, 15000);
+
+    // Listen for success/error
+    function onResponse(event) {
+      if (!event.data) return;
+      if (event.data.type === 'digital-loaded') {
+        clearTimeout(timeout);
+        window.removeEventListener('message', onResponse);
+        statusEl.textContent = 'Checkpoint loaded: ' + checkpointUrl;
+        statusEl.className = 'ready';
+        if (btnEl) {
+          btnEl.textContent = 'Loaded';
+          btnEl.classList.add('loaded');
+          btnEl.disabled = false;
+        }
+      }
+      if (event.data.type === 'digital-error') {
+        clearTimeout(timeout);
+        window.removeEventListener('message', onResponse);
+        statusEl.textContent = 'Error: ' + event.data.error;
+        statusEl.className = 'error';
+        if (btnEl) { btnEl.textContent = 'Retry'; btnEl.disabled = false; }
+      }
+    }
+    window.addEventListener('message', onResponse);
+  };
+
+  // -- Listen for Digital ready signal ----------------------------------------
+  window.addEventListener('message', function(event) {
+    if (!event.data) return;
+    if (event.data.type === 'digital-ready') {
+      digitalReady = true;
+      statusEl.textContent = 'Digital is ready';
+      statusEl.className = 'ready';
+    }
+    if (event.data.type === 'digital-error' && !digitalReady) {
+      statusEl.textContent = 'Error: ' + event.data.error;
+      statusEl.className = 'error';
+    }
+  });
+
+  // -- Resizable instructions panel -------------------------------------------
+  var resizeHandle = document.getElementById('resize-handle');
+  var instructionsPanel = document.getElementById('instructions');
+  var dragging = false;
+
+  resizeHandle.addEventListener('mousedown', function(e) {
+    e.preventDefault();
+    dragging = true;
+    resizeHandle.classList.add('active');
+    document.body.style.cursor = 'col-resize';
+    // Prevent iframe from eating mouse events during drag
+    simFrame.style.pointerEvents = 'none';
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!dragging) return;
+    var newWidth = e.clientX;
+    if (newWidth < 200) newWidth = 200;
+    if (newWidth > window.innerWidth - 400) newWidth = window.innerWidth - 400;
+    instructionsPanel.style.width = newWidth + 'px';
+  });
+
+  document.addEventListener('mouseup', function() {
+    if (!dragging) return;
+    dragging = false;
+    resizeHandle.classList.remove('active');
+    document.body.style.cursor = '';
+    simFrame.style.pointerEvents = '';
+  });
+})();
+</script>
+
+</body>
+</html>
