@@ -119,13 +119,21 @@
             if (lbl) labelMap[lbl] = e;
           }
 
+          var exported = sim.exportCircuit();
+          var ctz = null;
+          try {
+            ctz = window.LZString
+              ? LZString.compressToEncodedURIComponent(exported)
+              : null;
+          } catch(x) {}
+
           window.parent.postMessage({
             type: 'circuitjs-elements',
-            elements: info
+            elements: info,
+            ctz: ctz
           }, '*');
 
           if (editableIndices.size > 0) {
-            var exported = sim.exportCircuit();
             var sigs = extractSignatures(exported, elems);
             if (sigs) {
               if (!baselineSignatures) {
