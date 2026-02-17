@@ -11,18 +11,17 @@ but you can also type in the input field to test grading.</p>
 
 <p>Target: <strong>{@target_voltage@}</strong> V (&plusmn; {@tol@} V)</p>
 
-<p><em>Right-click a component and choose "Edit..." to change its value.
-The readout updates live.</em></p>
+<p><em>Edit the simulated circuit, the result will be read when you click &quot;Check&quot;.</em></p>
 
 [[iframe height="640px" width="830px"]]
 <div style="font-family:sans-serif;">
 
-  <iframe id="sim-bridge"
-    src="https://ccam80.github.io/circuitjs-moodle/bridge.html?ctz=CQAgjCAMB0l3BWEA2aAWB8CcBmSy0AOBBAdkJE0sskoFMBaMMAKAGMQAmNWsZWnr34g0UWPAidomSFgSccpTmBwICyMXAiQWAJxFxwwwV0IVaqlgHkDQ2gjCcjtFywDmt0xRM5OLqCxgpLTcdlyQFHwW4eDw1DCsfqSeUSJ84JzeIABmAJYANgAuLElcSs5lTo5ZAIIAwiwA9iJGUAZYFEgw8LKkyGqcXVwtOCC5AHZNw+kCshRSXeJwWH0DSBAQjQCuxQAWIKPaLEA&amp;nodes=AC,filt,out&amp;editable=true&amp;rate=2&amp;whiteBackground=true"
+  <iframe id="sim-frame"
+    src="https://ccam80.github.io/circuitjs-moodle/circuitjs.html?running=true&amp;ctz=CQAgjCAMB0l3BWEA2aAWB8CcBmSy0AOBBAdkJE0sskoFMBaMMAKAGMQAmNWsZWnr34g0UWPAidomSFgSccpTmBwICyMXAiQWAJxFxwwwV0IVaqlgHkDQ2gjCcjtFywDmt0xRM5OLqCxgpLTcdlyQFHwW4eDw1DCsfqSeUSJ84JzeIABmAJYANgAuLElcSs5lTo5ZAIIAwiwA9iJGUAZYFEgw8LKkyGqcXVwtOCC5AHZNw+kCshRSXeJwWH0DSBAQjQCuxQAWIKPaLEA&amp;editable=true&amp;whiteBackground=true"
     width="800" height="550" style="border:1px solid #ccc;">
   </iframe>
 
-  <div id="readout" style="font-family:monospace; padding:8px; font-size:14px;
+  <div id="readout" style="display:none; font-family:monospace; padding:8px; font-size:14px;
     background:#f4f4f4; border:1px solid #ddd; margin-top:4px;">
     AC = <span id="val-AC">&mdash;</span> V<br/>
     filt = <span id="val-filt">&mdash;</span> V<br/>
@@ -37,6 +36,17 @@ import {stack_js} from '[[cors src="stackjsiframe.js"/]]';
 
 const inputId = await stack_js.request_access_to_input("ans1", true);
 const stackInput = document.getElementById(inputId);
+
+var simFrame = document.getElementById('sim-frame');
+simFrame.addEventListener('load', function() {
+  simFrame.contentWindow.postMessage({
+    type: 'circuitjs-subscribe',
+    nodes: ["AC", "filt", "out"],
+    elements: [],
+    rate: 2,
+    editableIndices: []
+  }, '*');
+});
 
 window.addEventListener('message', function(event) {
   if (!event.data || event.data.type !== 'circuitjs-data') return;
@@ -69,7 +79,7 @@ window.addEventListener('message', function(event) {
     <defaultgrade>1</defaultgrade>
     <penalty>0.1</penalty>
     <hidden>0</hidden>
-    <plugin qtype="stack">
+    <idnumber/>
       <stackversion>
         <text/>
       </stackversion>
@@ -90,6 +100,7 @@ tol: 0.2;
       <questionsimplify>1</questionsimplify>
       <assumepositive>0</assumepositive>
       <assumereal>0</assumereal>
+      <isbroken>0</isbroken>
       <prtcorrect format="html">
         <text><![CDATA[<span style="font-size: 1.5em; color:green;"><i class="fa fa-check"></i></span> Correct answer, well done.]]></text>
       </prtcorrect>
@@ -99,12 +110,8 @@ tol: 0.2;
       <prtincorrect format="html">
         <text><![CDATA[<span style="font-size: 1.5em; color:red;"><i class="fa fa-times"></i></span> Incorrect answer.]]></text>
       </prtincorrect>
-      <decimals>
-        <text>.</text>
-      </decimals>
-      <scientificnotation>
-        <text>*10</text>
-      </scientificnotation>
+      <decimals>.</decimals>
+      <scientificnotation>*10</scientificnotation>
       <multiplicationsign>dot</multiplicationsign>
       <sqrtsign>1</sqrtsign>
       <complexno>j</complexno>
@@ -192,7 +199,6 @@ tol: 0.2;
           <expectedanswernote>prt1-1-F</expectedanswernote>
         </expected>
       </qtest>
-    </plugin>
     <tags>
       <tag>
         <text>circuitjs</text>
