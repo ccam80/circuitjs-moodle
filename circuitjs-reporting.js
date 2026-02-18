@@ -20,7 +20,10 @@
 (function() {
   var subscribed = false;
 
-  var NON_ELEMENT_PREFIXES = ['$', 'w', 'o', '38', 'h', '&'];
+  // Meta-only prefixes: these lines are not elements and are excluded.
+  // 'w' (wire) is NOT excluded here — wires are real API elements and must
+  // be kept to maintain 1:1 alignment with sim.getElements().
+  var META_ONLY_PREFIXES = ['$', 'o', '38', 'h', '&'];
 
   /**
    * Build per-element info from export text + API elements.
@@ -30,8 +33,8 @@
     var lines = exportText.split('\n').filter(function(line) {
       line = line.trim();
       if (!line) return false;
-      for (var p = 0; p < NON_ELEMENT_PREFIXES.length; p++) {
-        var pfx = NON_ELEMENT_PREFIXES[p];
+      for (var p = 0; p < META_ONLY_PREFIXES.length; p++) {
+        var pfx = META_ONLY_PREFIXES[p];
         if (line === pfx || line.indexOf(pfx + ' ') === 0) return false;
       }
       return true;
