@@ -7,11 +7,13 @@
  * (which forbids contentWindow access to nested iframes).
  *
  * Protocol:
- *   Parent sends:  { type: 'circuitjs-subscribe', nodes, elements, rate, permissions }
+ *   Parent sends:  { type: 'circuitjs-subscribe', nodes, elements, rate, permissions, studentCtz }
  *   permissions: { editableIndices, removableIndices, typeRules }
+ *   studentCtz: LZ-compressed circuit state saved from a previous attempt (optional)
  *   This script sends back:
  *     { type: 'circuitjs-data', values: { ... } }         — periodic update
  *     { type: 'circuitjs-elements', elements: [ ... ] }   — on circuit change
+ *     { type: 'circuitjs-integrity', integrity: 0|1 }     — immediate on change
  *
  * Usage in circuitjs.html:
  *   <script src="circuitjs-reporting.js"></script>
@@ -212,12 +214,16 @@
     // Absence of permissions key means no integrity checking.
     var hasPermissions = !!(config.permissions || config.editableIndices);
 
+    var studentCtz = config.studentCtz || null;
+
     var skipEvery = Math.max(1, Math.round(60 / rate));
     var updateCount = 0;
     var labelMap = {};
     var baselineInfo = null;
     var baselineTypeCounts = null;
-    var integrityOk = 1;
+    // Fail-safe: default to failed until first successful integrity check.
+    // Prevents stale OK value if student edits + clicks Check before onanalyze.
+    var integrityOk = hasPermissions ? 0 : 1;
 
     /** Build baseline object for checkIntegrity calls. */
     function makeBaseline() {
@@ -308,12 +314,21 @@
             if (elemInfo) {
               integrityOk = checkIntegrity(elemInfo, makeBaseline());
             }
+            // Send integrity immediately — don't wait for the next periodic
+            // onupdate.  Eliminates the race where a rapid edit + Check
+            // submits a stale OK value.
+            window.parent.postMessage({
+              type: 'circuitjs-integrity',
+              integrity: integrityOk
+            }, '*');
           }
         } catch(e) {}
       };
 
-      // Immediately capture baseline from the already-analyzed circuit
-      // (CircuitJS1 analyzes on load before our subscribe arrives)
+      // Capture baseline from the original circuit (loaded via iframe src).
+      // The iframe always loads the question author's original ctz, so the
+      // baseline reflects the unmodified circuit regardless of prior student
+      // edits saved in ans_circuit.
       if (hasPermissions) {
         try {
           var elems = sim.getElements();
@@ -324,6 +339,24 @@
             baselineTypeCounts = buildTypeCounts(initialInfo);
             // Expose baseline for integration testing
             exports._baseline = makeBaseline();
+            // Verify original circuit against itself → OK immediately,
+            // so the first onupdate reports 1 instead of the fail-safe 0.
+            integrityOk = checkIntegrity(initialInfo, makeBaseline());
+          }
+        } catch(e) {}
+      }
+
+      // If the student had a saved circuit from a previous attempt,
+      // restore it now (after baseline capture so baseline stays original).
+      if (studentCtz) {
+        try {
+          var studentText = window.LZString
+            ? LZString.decompressFromEncodedURIComponent(studentCtz)
+            : null;
+          if (studentText) {
+            sim.importCircuit(studentText, false);
+            // importCircuit triggers onanalyze, which will run the
+            // integrity check against the (correct) original baseline.
           }
         } catch(e) {}
       }
